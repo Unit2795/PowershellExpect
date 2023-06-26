@@ -1,5 +1,7 @@
+Import-Module "..\src\PowershellExpect.psm1"
+
 # 2 second timeout
-Spawn "bash ./test.sh" 2
+Spawn "bash ./examples/test.sh" 3
 Expect "name"
 Send "Joe Tester"
 Expect "age"
@@ -9,7 +11,7 @@ Send "`$60,000"
 Expect -EOF
 
 
-Spawn "node -v"
+Spawn "node -v" 5
 Expect "v18.*"
 Send "npm -v"
 Expect "9.*"
