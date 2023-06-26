@@ -1,11 +1,5 @@
-# PowershellExpect
+Import-Module "C:\Code\PowershellExpect\PowershellExpect.psm1"
 
-Mimic Linux Expect, Spawn, and Send commands in Powershell without any external dependencies
-
-
-
-Example Usage:
-```powershell
 # 2 second timeout
 Spawn "bash ./test.sh" 2
 Expect "name"
@@ -22,4 +16,3 @@ Expect "v18.*"
 Send "npm -v"
 Expect "9.*"
 Expect -EOF
-```
