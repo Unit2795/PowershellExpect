@@ -13,11 +13,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        
+      - name: Setup PowerShell
+        uses: powershell/setup-powershell@v1
+        with:
+          powershell-version: '7.3.4'
+
+      - name: Install dependencies
+        run: |
+          Install-Module -Name PowerShellGet -Force
+          Install-Module -Name NuGet -Force
 
       - name: Run workflow
         if: github.event.pull_request.merged && github.event.pull_request.base.ref == 'main'
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
+          $env:PSModulePath = $env:PSModulePath + ":/home/runner/work/_temp"
+          Import-Module PowerShellGet
           $apiKey = $env:NUGET_API_KEY
           Publish-Module -Path ./src -NuGetApiKey $apiKey
