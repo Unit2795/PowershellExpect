@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Linq;
 
-public class ProcessStarter
+public class PowershellExpect
 {
     Process process = new Process();
     private static List<string> output = new List<string>();
@@ -13,6 +13,7 @@ public class ProcessStarter
 
     public void StartProcess(int? timeout)
     {
+        // If a timeout was provided, override the global timeout
         if (timeout > 0)
         {
             timeoutSeconds = timeout;
@@ -38,27 +39,34 @@ public class ProcessStarter
     
     public void StopProcess()
     {
+        // Stop reading the process output so we can remove the event handler
         process.CancelOutputRead();
         process.OutputDataReceived -= ProcessOutputHandler;
-        Console.WriteLine("Killing process");
+
+        // Assuming process has not already exited, destroy the process
         if (!process.HasExited)
         {
             process.Kill();
         }
+        Console.WriteLine("Closing process");
         process.Close();
     }
     
     public void Expect(string regexString, int? timeoutMs, bool continueOnTimeout, bool EOF)
     {
+        // If user is expecting end of automation process, close the process.
         if (EOF)
         {
             this.StopProcess();
         }
         else
         {
+            // Convert incoming regex string to actual Regex
             Regex regex = new Regex(regexString);
             bool matched = false;
             int? timeout = 0;
+            
+            // If a timeout was provided specifically to this expect, override any global settings
             if (timeoutMs > 0) 
             {
                 timeout = timeoutMs;
@@ -67,8 +75,10 @@ public class ProcessStarter
             {
                 timeout = timeoutSeconds;
             }
+            // Calculate the max timestamp we can reach before the expect times out
             long? maxTimestamp = DateTimeOffset.Now.ToUnixTimeSeconds() + timeout;
         
+            // While no match is found (or no timeout occurs), continue to evaluate output until match is found
             do
             {
                 foreach (string item in output)
@@ -81,7 +91,10 @@ public class ProcessStarter
                         break;
                     }
                 }
+                // Clear the output to keep the buffer nice and lean
                 output.Clear();
+                
+                // If a timeout is set and we've exceeded the max time, throw timeout error and stop the loop
                 if (timeout > 0 && DateTimeOffset.Now.ToUnixTimeSeconds() >= maxTimestamp)
                 {
                     string timeoutMessage = $"Timed out waiting for: '{regexString}'";
@@ -97,6 +110,8 @@ public class ProcessStarter
                     }
                     break;
                 }
+                
+                // TODO: Evaluate if this timeout is too much or if we should attempt to evaluate matches as they arrive.
                 Thread.Sleep(500);
             } while (!matched);
         }
@@ -111,9 +126,11 @@ public class ProcessStarter
     {
         Console.WriteLine(data);
         
-        while (output.Count > maxLength)
+        // If there are too many items in the array, truncate items starting from the oldest.
+        if (output.Count > maxLength)
         {
-            output.RemoveAt(0);
+            int removeCount = output.Count - maxLength;
+            output.RemoveRange(0, removeCount);
         }
 
         output.Add(data);
@@ -123,6 +140,7 @@ public class ProcessStarter
     {
         if (args.Data != null)
         {
+            // Set the max length of the output list to 100 items
             AppendOutput(args.Data, 100);
         }
     }
