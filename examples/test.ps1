@@ -11,7 +11,7 @@ Send "`$60,000"
 Expect -EOF
 
 
-Spawn "node -v" 6
+Spawn "node -v" 5
 Expect "v18.*"
 Send "npm -v"
 Expect "9.*"
