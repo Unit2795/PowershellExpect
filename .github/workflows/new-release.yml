@@ -1,0 +1,23 @@
+name: Build and Release to Powershell Gallery
+
+on:
+  pull_request:
+    types: [ closed ]
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run workflow
+        if: github.event.pull_request.merged && github.event.pull_request.base.ref == 'main'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          $apiKey = $env:NUGET_API_KEY
+          Publish-Module -Path ./src -NuGetApiKey $apiKey
