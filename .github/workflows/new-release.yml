@@ -20,5 +20,6 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
+          Get-Location
           $apiKey = $env:NUGET_API_KEY
           Publish-Module -Path ./src -NuGetApiKey $apiKey
