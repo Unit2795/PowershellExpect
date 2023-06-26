@@ -19,6 +19,5 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          cd $GITHUB_WORKSPACE/src
           $apiKey = $env:NUGET_API_KEY
-          Publish-Module -Path . -NuGetApiKey $apiKey
+          Publish-Module -Path ./PowershellExpect -NuGetApiKey $apiKey

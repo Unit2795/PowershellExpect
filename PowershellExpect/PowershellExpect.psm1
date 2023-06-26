@@ -1,5 +1,5 @@
 Add-Type -Path  "$PSScriptRoot/PowershellExpect.cs"
-$processHandler = New-Object PowershellExpect
+$processHandler = New-Object PowershellExpectHandler
 
 # Spawn a child process to execute commands in
 function Spawn {

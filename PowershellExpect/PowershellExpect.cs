@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Linq;
 
-public class PowershellExpect
+public class PowershellExpectHandler
 {
     Process process = new Process();
     private static List<string> output = new List<string>();
