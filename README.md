@@ -4,6 +4,13 @@ Mimic Linux Expect, Spawn, and Send commands in Powershell for easy CLI automati
 
 ----
 
+Installation
+`Install-Module -Name PowershellExpect`
+
+[More information about installing Powershell Gallery modules](https://learn.microsoft.com/en-us/powershell/module/powershellget/install-module?view=powershellget-2.x)
+
+----
+
 ## Example Usage:
 ```powershell
 # 2 second timeout
