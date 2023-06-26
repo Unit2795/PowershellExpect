@@ -1,5 +1,3 @@
-Import-Module "C:\Code\PowershellExpect\PowershellExpect.psm1"
-
 # 2 second timeout
 Spawn "bash ./test.sh" 2
 Expect "name"
