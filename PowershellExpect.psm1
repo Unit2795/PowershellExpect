@@ -53,4 +53,4 @@ function Expect {
      }
 }
 
-Export-ModuleMember -Function Spawn, Expect, Send, Despawn
+Export-ModuleMember -Function Spawn, Expect, Send
