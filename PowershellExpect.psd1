@@ -19,9 +19,19 @@
     Send "npm -v"
     Expect "9.*"
     Expect -EOF
+    
+    
+    Keywords:
+    automation, RPA, expect, spawn, send, linux, bash, CLI, async, thread-safe, regex
     '
     FunctionsToExport = 'Expect', 'Send', 'Spawn'
     ModuleVersion     = '1.1.0'
     RootModule        = 'PowershellExpect.psm1'
     PowerShellVersion = '5.0'
+    PrivateData = @{
+        PSData = @{
+            Tags = 'automation', 'RPA', 'expect', 'spawn', 'send', 'linux', 'bash', 'CLI', 'regex'
+            ProjectUri = 'https://www.powershellgallery.com/packages/PowershellExpect'
+        }
+    }
 }
