@@ -20,6 +20,6 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          cd $env:GITHUB_WORKSPACE
+          echo $GITHUB_WORKSPACE
           $apiKey = $env:NUGET_API_KEY
-          Publish-Module -Path ./src -NuGetApiKey $apiKey
+          Publish-Module -Path $GITHUB_WORKSPACE/src -NuGetApiKey $apiKey
