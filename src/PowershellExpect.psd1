@@ -28,7 +28,7 @@
     MIT licensed!
     '
     FunctionsToExport = 'Expect', 'Send', 'Spawn'
-    ModuleVersion     = '1.1.1'
+    ModuleVersion     = '1.1.2'
     RootModule        = 'PowershellExpect.psm1'
     PowerShellVersion = '5.0'
     PrivateData = @{
