@@ -1,3 +1,5 @@
+#nullable enable
+
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -10,8 +12,14 @@ public class PowershellExpectHandler
     Process process = new Process();
     private static List<string> output = new List<string>();
     private int? timeoutSeconds = null;
+    private static readonly Dictionary<string, ConsoleKey> KeyMap = new Dictionary<string, ConsoleKey>
+    {
+        { "up", ConsoleKey.UpArrow },
+        { "down", ConsoleKey.DownArrow },
+        // ... add other keys as necessary ...
+    };
 
-    public void StartProcess(int? timeout)
+    public void StartProcess(string workingDirectory, int? timeout)
     {
         // If a timeout was provided, override the global timeout
         if (timeout > 0)
@@ -23,25 +31,33 @@ public class PowershellExpectHandler
         process.StartInfo.FileName = "pwsh.exe";
         process.StartInfo.UseShellExecute = false;
         process.StartInfo.RedirectStandardInput = true;
+        process.StartInfo.RedirectStandardError = true;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.CreateNoWindow = false;
         process.EnableRaisingEvents = true;
+        
+        // Set the working directory to the current directory of the executing assembly
+        process.StartInfo.WorkingDirectory = workingDirectory;
 
         // Attach an asynchronous event handler to the output
         process.OutputDataReceived += ProcessOutputHandler;
+        process.ErrorDataReceived += ProcessOutputHandler;
 
         // Start the process
         process.Start();
 
         // Start reading the output asynchronously
         process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
     }
     
     public void StopProcess()
     {
         // Stop reading the process output so we can remove the event handler
         process.CancelOutputRead();
+        process.CancelErrorRead();
         process.OutputDataReceived -= ProcessOutputHandler;
+        process.ErrorDataReceived -= ProcessOutputHandler;
 
         // Assuming process has not already exited, destroy the process
         if (!process.HasExited)
@@ -52,7 +68,7 @@ public class PowershellExpectHandler
         process.Close();
     }
     
-    public void Expect(string regexString, int? timeoutMs, bool continueOnTimeout, bool EOF)
+    public string? Expect(string regexString, int? timeoutMs, bool continueOnTimeout, bool EOF)
     {
         // If user is expecting end of automation process, close the process.
         if (EOF)
@@ -88,7 +104,7 @@ public class PowershellExpectHandler
                     {
                         Console.WriteLine("Match found: " + item);
                         matched = true;
-                        break;
+                        return item;
                     }
                 }
                 // Clear the output to keep the buffer nice and lean
@@ -97,7 +113,7 @@ public class PowershellExpectHandler
                 // If a timeout is set and we've exceeded the max time, throw timeout error and stop the loop
                 if (timeout > 0 && DateTimeOffset.Now.ToUnixTimeSeconds() >= maxTimestamp)
                 {
-                    string timeoutMessage = $"Timed out waiting for: '{regexString}'";
+                    string timeoutMessage = String.Format("Timed out waiting for: '{0}'", regexString);
                     matched = true;
                     if (!continueOnTimeout)
                     {
@@ -115,11 +131,49 @@ public class PowershellExpectHandler
                 Thread.Sleep(500);
             } while (!matched);
         }
+
+        return null;
     }
 
     public void Send(string command, bool noNewline)
     {
         process.StandardInput.Write(command + (noNewline ? "" : "\n"));
+    }
+    
+    public string SendAndWaitForIdle(string command, int idleDurationSeconds, int ignoreLines, bool noNewline = false)
+    {
+        // Send the command
+        Send(command, noNewline);
+
+        // Capture the initial timestamp
+        var startTime = DateTimeOffset.Now;
+
+        // List to store captured output during idle time
+        List<string> idleOutput = new List<string>();
+
+        // Loop until the idle duration expires
+        while (DateTimeOffset.Now < startTime.AddSeconds(idleDurationSeconds))
+        {
+            // We'll check for new output every 200ms. Adjust as necessary.
+            Thread.Sleep(500);
+
+            // Check if there's any new output
+            if (output.Any())
+            {
+                // Add any new output to our idleOutput list
+                idleOutput.AddRange(output);
+                output.Clear(); // Clear the main output list to avoid double-capturing
+            }
+        }
+        
+        // Combine all captured lines into a single string
+        var allOutput = string.Join("\n", idleOutput);
+
+        // Split the string into lines, skip the first line, and then re-join them
+        var trimmedOutput = string.Join("\n", allOutput.Split('\n').Skip(ignoreLines));
+
+        // Return the captured output during idle time as a single string
+        return trimmedOutput;
     }
     
     private static void AppendOutput(string data, int maxLength)
