@@ -41,6 +41,23 @@ function Send {
     }
 }
 
+# Send a set of keypresses to the spawned child process
+function SendKeys {
+    param(
+        [string[]]$Keys,
+        # You may optionally press all of the keys simultaneously, otherwise they are sent sequentially (one after another)
+        [switch]$Simultaneous = $false
+    )
+    try
+    {
+        $processHandler.SendKeys($Keys, $Simultaneous)
+    } catch {
+        Write-Warning "PowershellExpect encountered an error!"
+        Write-Error $_
+        throw
+    }
+}
+
 # Send a command to the spawned child process and wait until the output is idle for a set amount of seconds, then return the output
 function SendAndWaitForIdle {
     param(
@@ -78,4 +95,4 @@ function Expect {
      }
 }
 
-Export-ModuleMember -Function Spawn, Expect, Send, SendAndWaitForIdle
+Export-ModuleMember -Function Spawn, Expect, Send, SendAndWaitForIdle, SendKeys

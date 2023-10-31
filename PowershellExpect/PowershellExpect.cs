@@ -12,12 +12,6 @@ public class PowershellExpectHandler
     Process process = new Process();
     private static List<string> output = new List<string>();
     private int? timeoutSeconds = null;
-    private static readonly Dictionary<string, ConsoleKey> KeyMap = new Dictionary<string, ConsoleKey>
-    {
-        { "up", ConsoleKey.UpArrow },
-        { "down", ConsoleKey.DownArrow },
-        // ... add other keys as necessary ...
-    };
 
     public void StartProcess(string workingDirectory, int? timeout)
     {
@@ -135,7 +129,7 @@ public class PowershellExpectHandler
         return null;
     }
 
-    public void Send(string command, bool noNewline)
+    public void Send(string command, bool noNewline = false)
     {
         process.StandardInput.Write(command + (noNewline ? "" : "\n"));
     }
@@ -174,6 +168,78 @@ public class PowershellExpectHandler
 
         // Return the captured output during idle time as a single string
         return trimmedOutput;
+    }
+    
+    
+    public void SendKeys(List<string> keyNames, bool simultaneous = false)
+    {
+        ConsoleModifiers modifiers = default;
+
+        // First, process the modifier keys
+        foreach (var keyName in keyNames)
+        {
+            if (keyName.ToLower() == "shift") modifiers |= ConsoleModifiers.Shift;
+            else if (keyName.ToLower() == "alt") modifiers |= ConsoleModifiers.Alt;
+            else if (keyName.ToLower() == "ctrl") modifiers |= ConsoleModifiers.Control;
+        }
+
+        // Then, process the actual keys
+        foreach (var keyName in keyNames)
+        {
+            var key = GetConsoleKeyFromString(keyName);
+
+            if (key == null)
+            {
+                throw new ArgumentException($"The key '{keyName}' is not supported. Please use a valid ConsoleKey name.");
+            }
+
+            // If the key is a modifier key, we skip since we've already processed them
+            if (keyName.ToLower() == "shift" || keyName.ToLower() == "alt" || keyName.ToLower() == "ctrl") continue;
+
+            var keyInfo = new ConsoleKeyInfo((char)key, key.Value, 
+                                             (modifiers & ConsoleModifiers.Shift) != 0, 
+                                             (modifiers & ConsoleModifiers.Alt) != 0, 
+                                             (modifiers & ConsoleModifiers.Control) != 0);
+
+            if (simultaneous)
+            {
+                // If simultaneous is set, combine the modifiers with each key and send
+                SendKeyInfo(keyInfo);
+            }
+            else
+            {
+                // Otherwise, send each key individually
+                SendKeyInfo(keyInfo);
+            }
+        }
+    }
+
+    private ConsoleKey? GetConsoleKeyFromString(string keyName)
+    {
+        foreach (ConsoleKey key in Enum.GetValues(typeof(ConsoleKey)))
+        {
+            if (key.ToString().Equals(keyName, StringComparison.OrdinalIgnoreCase))
+                return key;
+        }
+        return null;  
+    }
+
+    private void SendKeyInfo(ConsoleKeyInfo keyInfo)
+    {
+        byte[] bytes;
+
+        // If the key is alphanumeric, send only the char representation
+        if (char.IsLetterOrDigit(keyInfo.KeyChar) || char.IsPunctuation(keyInfo.KeyChar) || char.IsWhiteSpace(keyInfo.KeyChar))
+        {
+            bytes = new byte[] { (byte)keyInfo.KeyChar };
+        }
+        else
+        {
+            bytes = new byte[] { (byte)keyInfo.Key };
+        }
+    
+        process.StandardInput.BaseStream.Write(bytes, 0, bytes.Length);
+        process.StandardInput.BaseStream.Flush();
     }
     
     private static void AppendOutput(string data, int maxLength)
