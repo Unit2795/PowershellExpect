@@ -221,5 +221,72 @@ public class PowershellExpectHandler
 
         return null;
     }
+    
+    public void SendKeys(List<List<string>> keyGroups)
+    {
+        foreach (var keyGroup in keyGroups)
+        {
+            ConsoleModifiers modifiers = default;
+
+            // First, process the modifier keys
+            foreach (var keyName in keyGroup)
+            {
+                if (keyName.ToLower() == "shift") modifiers |= ConsoleModifiers.Shift;
+                else if (keyName.ToLower() == "alt") modifiers |= ConsoleModifiers.Alt;
+                else if (keyName.ToLower() == "ctrl") modifiers |= ConsoleModifiers.Control;
+            }
+
+            // Then, process the actual keys
+            foreach (var keyName in keyGroup)
+            {
+                var key = GetConsoleKeyFromString(keyName);
+
+                if (key == null)
+                {
+                    throw new ArgumentException($"The key '{keyName}' is not supported. Please use a valid ConsoleKey name.");
+                }
+
+                // Skip if it's a modifier key since we've already processed them
+                if (keyName.ToLower() == "shift" || keyName.ToLower() == "alt" || keyName.ToLower() == "ctrl") continue;
+
+                char charRepresentation = keyName.Length == 1 ? keyName[0] : (char)key;
+                var keyInfo = new ConsoleKeyInfo(charRepresentation, key.Value, 
+                                                 (modifiers & ConsoleModifiers.Shift) != 0, 
+                                                 (modifiers & ConsoleModifiers.Alt) != 0, 
+                                                 (modifiers & ConsoleModifiers.Control) != 0);
+
+                // Send each key individually
+                SendKeyInfo(keyInfo);
+            }
+        }
+    }
+
+    private ConsoleKey? GetConsoleKeyFromString(string keyName)
+    {
+        foreach (ConsoleKey key in Enum.GetValues(typeof(ConsoleKey)))
+        {
+            if (key.ToString().Equals(keyName, StringComparison.OrdinalIgnoreCase))
+                return key;
+        }
+        return null;
+    }
+
+    private void SendKeyInfo(ConsoleKeyInfo keyInfo)
+    {
+        byte[] bytes;
+
+        // If the key is alphanumeric, send only the char representation
+        if (char.IsLetterOrDigit(keyInfo.KeyChar) || char.IsPunctuation(keyInfo.KeyChar) || char.IsWhiteSpace(keyInfo.KeyChar))
+        {
+            bytes = new byte[] { (byte)keyInfo.KeyChar };
+        }
+        else
+        {
+            bytes = new byte[] { (byte)keyInfo.Key };
+        }
+
+        process.StandardInput.BaseStream.Write(bytes, 0, bytes.Length);
+        process.StandardInput.BaseStream.Flush();
+    }
 }
 

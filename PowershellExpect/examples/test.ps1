@@ -1,7 +1,8 @@
 Import-Module "..\PowershellExpect.psm1"
 
 $myProcess2 = Spawn -Timeout 5 -EnableLogging
-$myProcess2.Send("npm -v")
+$myProcess2.Send("npm -v", $true)
+$myProcess2.SendKeys("Enter")
 $npm = $myProcess2.Expect("10.*")
 $myProcess2.Exit()
 

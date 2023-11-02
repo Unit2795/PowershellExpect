@@ -3,8 +3,6 @@ Add-Type -Path  "$PSScriptRoot/PowershellExpect.cs"
 # Spawn a child process to execute commands in
 function Spawn {
     param(
-        # Optional command to run with the spawn (otherwise will just start a powershell process)
-        [string]$Command = $null,
         # Timeout in seconds
         [int]$Timeout = $null,
         [switch]$EnableLogging = $false
@@ -27,6 +25,31 @@ function Spawn {
             )
             # Use stored HandlerInstance to send the command
             $this.ProcessHandler.Send($CommandToSend, $NoNewline)
+        }
+        $process | Add-Member -MemberType ScriptMethod -Name "SendKeys" -Value {
+            param(
+                [string[]]$Simultaneous,
+                [string[]]$Sequential
+            )
+            try
+            {
+                # Convert the parameters into the expected format for the C# method.
+                # We will encapsulate simultaneous keys in their own nested array,
+                # followed by sequential keys each in their own array.
+                $keyGroups = @()
+                if ($Simultaneous) {
+                    $keyGroups += ,@($Simultaneous)
+                }
+                foreach ($key in $Sequential) {
+                    $keyGroups += ,@($key)
+                }
+
+                $this.ProcessHandler.SendKeys($keyGroups)
+            } catch {
+                Write-Warning "PowershellExpect encountered an error!"
+                Write-Error $_
+                throw
+            }
         }
         $process | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
             param(
