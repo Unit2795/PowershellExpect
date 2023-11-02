@@ -1,19 +1,31 @@
+<#
+#       Note that this example is not good form, it's generally not recommended to spin up this many individual
+#    processes for such a simple script, in fact this library is not necessary for such a simple usecase. 
+#    Nonetheless, it's satisfactory for the purposes of checking the functionality of the library with live tools.
+#
+#    This script requires you to have node, npm, and pnpm installed, adjust as necessary.
+#>
+
 Import-Module "..\PowershellExpect.psm1"
 
-$myProcess2 = Spawn -Timeout 5 -EnableLogging
-$myProcess2.Send("npm -v", $true)
-$myProcess2.SendKeys("Enter")
-$npm = $myProcess2.Expect("10.*")
-$myProcess2.Exit()
+# Check Node Version
+$nodeProcess = Spawn -Timeout 5 -EnableLogging
+$nodeProcess.Send("node -v")
+$node = $nodeProcess.Expect("v18.*")
+$nodeProcess.Exit()
 
-$myProcess = Spawn -Timeout 5 -EnableLogging
-$myProcess.Send("node -v")
-$node = $myProcess.Expect("v18.*")
-$myProcess.Exit()
+# Check NPM version
+$npmProcess = Spawn -Timeout 5 -EnableLogging
+$npmProcess.Send("npm -v", $true)
+# Try using enter to submit answer instead of using newline
+$npmProcess.SendKeys("Enter")
+$npm = $npmProcess.Expect("10.*")
+$npmProcess.Exit()
 
-$waitProcess = Spawn -EnableLogging
-$pnpm = $waitProcess.SendAndWait("pnpm -v", 2)
-$waitProcess.Exit()
+# Check PNPM version
+$pnpmProcess = Spawn -EnableLogging
+$pnpm = $pnpmProcess.SendAndWait("pnpm -v", 2)
+$pnpmProcess.Exit()
 
 Write-Host "Node Version: $node PNPM"
 Write-Host "NPM Version: $npm PNPM"
