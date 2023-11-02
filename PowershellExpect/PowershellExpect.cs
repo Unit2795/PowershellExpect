@@ -15,13 +15,22 @@ public class PowershellExpectHandler
     Process process = new Process();
     private List<string> output = new List<string>();
     private int? timeoutSeconds = null;
+    private bool loggingEnabled = false;
 
-    public System.Diagnostics.Process StartProcess(string workingDirectory, int? timeout)
+    public System.Diagnostics.Process StartProcess(string workingDirectory, int? timeout, bool enableLogging)
     {
+        Console.ForegroundColor = ConsoleColor.Blue;
+        
         // If a timeout was provided, override the global timeout
         if (timeout > 0)
         {
             timeoutSeconds = timeout;
+        }
+        loggingEnabled = enableLogging;
+
+        if (loggingEnabled)
+        {
+            InfoMessage("Starting process...");
         }
         
         // Configure the process
@@ -50,14 +59,24 @@ public class PowershellExpectHandler
         // Return the process
         return process;
     }
-    
-    
+
+    // Log a message to keep the user appraised of 
+    private void InfoMessage(string message)
+    {
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine(message);
+        // Revert back to default color after logging info message
+        Console.ForegroundColor = ConsoleColor.Blue;
+    }
     
     private void ProcessOutputHandler(object sender, DataReceivedEventArgs args)
     {
         void AppendOutput(string data, int maxLength)
         {
-            Console.WriteLine(data);
+            if (loggingEnabled)
+            {
+                Console.WriteLine(data);
+            }
         
             // If there are too many items in the array, truncate items starting from the oldest.
             if (output.Count > maxLength)
@@ -78,6 +97,12 @@ public class PowershellExpectHandler
     
     public void Exit()
     {
+        if (loggingEnabled)
+        {
+            InfoMessage("Closing process...");
+        }
+        
+        Console.ResetColor();
         // Stop reading the process output so we can remove the event handler
         process.CancelOutputRead();
         process.CancelErrorRead();
@@ -89,7 +114,7 @@ public class PowershellExpectHandler
         {
             process.Kill();
         }
-        Console.WriteLine("Closing process");
+
         process.Close();
     }
     
@@ -161,7 +186,11 @@ public class PowershellExpectHandler
                 Match match = regex.Match(item);
                 if (match.Success)
                 {
-                    Console.WriteLine("Match found: " + item);
+                    if (loggingEnabled)
+                    {
+                        InfoMessage("Match found: " + item);
+                    }
+
                     matched = true;
                     return item;
                 }

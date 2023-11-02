@@ -6,7 +6,8 @@ function Spawn {
         # Optional command to run with the spawn (otherwise will just start a powershell process)
         [string]$Command = $null,
         # Timeout in seconds
-        [int]$Timeout = $null
+        [int]$Timeout = $null,
+        [switch]$EnableLogging = $false
     )
     try
     {
@@ -14,7 +15,7 @@ function Spawn {
         $processHandler = New-Object PowershellExpectHandler
         
         # Start the process
-        $process = $processHandler.StartProcess($PWD, $Timeout)
+        $process = $processHandler.StartProcess($PWD, $Timeout, $EnableLogging)
 
         # Store the ProcessHandler instance in the process object to ensure that the spawned process is persisted
         $process | Add-Member -MemberType NoteProperty -Name "ProcessHandler" -Value $processHandler
@@ -74,8 +75,6 @@ function Spawn {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
         throw
-    } finally {
-        
     }
 }
 
