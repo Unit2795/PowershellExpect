@@ -174,7 +174,7 @@ public class PowershellExpectHandler
     }
     
     // Observe the output of the spawned PowerShell process and wait for a desired result to be encountered
-    public string? Expect(string regexString, int? timeoutMs, bool continueOnTimeout)
+    public string? Expect(string regexString, int? timeoutSec, bool continueOnTimeout)
     {
         // Convert incoming regex string to actual Regex
         Regex regex = new Regex(regexString);
@@ -184,9 +184,9 @@ public class PowershellExpectHandler
         int? timeout = 0;
         
         // If a timeout was provided specifically to this expect, override any global settings
-        if (timeoutMs > 0) 
+        if (timeoutSec > 0) 
         {
-            timeout = timeoutMs;
+            timeout = timeoutSec;
         }
         //
         else if (timeoutSeconds > 0) 
