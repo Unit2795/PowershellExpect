@@ -16,9 +16,7 @@ $nodeProcess.Exit()
 
 # Check NPM version
 $npmProcess = Spawn -Timeout 5 -EnableLogging
-$npmProcess.Send("npm -v", $true)
-# Try using enter to submit answer instead of using newline
-$npmProcess.SendKeys("Enter")
+$npmProcess.Send("npm -v")
 $npm = $npmProcess.Expect("10.*")
 $npmProcess.Exit()
 
@@ -27,8 +25,8 @@ $pnpmProcess = Spawn -EnableLogging
 $pnpm = $pnpmProcess.SendAndWait("pnpm -v", 2)
 $pnpmProcess.Exit()
 
-Write-Host "Node Version: $node PNPM"
-Write-Host "NPM Version: $npm PNPM"
+Write-Host "Node Version: $node Node"
+Write-Host "NPM Version: $npm NPM"
 Write-Host "PNPM Version: $pnpm PNPM"
 
 if ($node -match "v18.18.0")
