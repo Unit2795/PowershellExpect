@@ -12,9 +12,14 @@ Mimic Linux Expect, Spawn, and Send commands in Powershell for easy interactive 
 
 ## Motivation
 
-Sometimes easily automated CLIs/APIs are not available for tools we need to use. This library helps automate some of those CLIs that are designed with interactivity in mind. This library also seeks to adopt some more modern features compared to some pre-existing PowerShell CLI automation tools and is in active development.
+Sometimes easily automated CLIs/APIs are not available for tools we need to use. This library helps automate some of those CLIs that are designed with interactivity in mind.
 
-Not every CLI will be able to be automated with this tool, complex GUIs and other flows may not be able to be fully automated and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. Other times a library like this may be overkill, when all you need to do is take the result of a command and pipe it into a variable or analyze for a match.
+Not every CLI will be able to be automated with this tool, complex GUIs and other flows may not be able to be fully automated and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. It's also difficult to send simulated keystrokes (arrow keys, ctrl, etc) to CLIs with this library, if you find you need this feature, open an issue and we may consider looking into this more seriously.
+
+### You may not need this library
+
+Other times a library like this may be overkill, when all you need to do is take the result of a command and pipe it into a variable or analyze for a match. PowerShell on its own is already quite capable of producing quite advanced CLI automations. Evaluate your usecase carefully and try to automate without a library first. If you need to work with long running processes, share results between multiple simultaneously running processes, or simplify your automation script; this library may be helpful. If you find that this library is missing a feature, please create a repo issue!
+
 ```powershell
 # Example of forwarding the result of a command into a variable
 $nodeVersion = & node -v
