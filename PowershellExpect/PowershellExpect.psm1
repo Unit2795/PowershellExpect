@@ -1,6 +1,9 @@
 Add-Type -Path  "$PSScriptRoot/PowershellExpect.cs"
 
-# Spawn a child process to execute commands in
+<# 
+#   Spawn a child PowerShell process to execute commands in.
+#   Returns an object containing the functions you may execute against the spawned PowerShell process.
+#>
 function Spawn {
     param(
         # Timeout in seconds
@@ -17,39 +20,16 @@ function Spawn {
 
         # Store the ProcessHandler instance in the process object to ensure that the spawned process is persisted
         $process | Add-Member -MemberType NoteProperty -Name "ProcessHandler" -Value $processHandler
+        
+        # START COMMANDS
+        # Attach all of the commands to the process object
         $process | Add-Member -MemberType ScriptMethod -Name "Send" -Value {
             param(
                 [string]$CommandToSend,
-                # Optionally disable sending the newline character, which submits the response (you can still provide manually with \n)
                 [switch]$NoNewline = $false
             )
             # Use stored HandlerInstance to send the command
             $this.ProcessHandler.Send($CommandToSend, $NoNewline)
-        }
-        $process | Add-Member -MemberType ScriptMethod -Name "SendKeys" -Value {
-            param(
-                [string[]]$Simultaneous,
-                [string[]]$Sequential
-            )
-            try
-            {
-                # Convert the parameters into the expected format for the C# method.
-                # We will encapsulate simultaneous keys in their own nested array,
-                # followed by sequential keys each in their own array.
-                $keyGroups = @()
-                if ($Simultaneous) {
-                    $keyGroups += ,@($Simultaneous)
-                }
-                foreach ($key in $Sequential) {
-                    $keyGroups += ,@($key)
-                }
-
-                $this.ProcessHandler.SendKeys($keyGroups)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
         }
         $process | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
             param(
@@ -92,6 +72,7 @@ function Spawn {
                 throw
             }
         }
+        # END COMMANDS
 
         return $process
     } catch {

@@ -14,10 +14,14 @@ Mimic Linux Expect, Spawn, and Send commands in Powershell for easy interactive 
 
 Sometimes easily automated CLIs/APIs are not available for tools we need to use. This library helps automate some of those CLIs that are designed with interactivity in mind. This library also seeks to adopt some more modern features compared to some pre-existing PowerShell CLI automation tools and is in active development.
 
-Not every CLI will be able to be automated with this tool, complex GUIs and other flows may not be able to be fully automated and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. Other times a library like this may be overkill, when all you need to do is take the result of a command and pipe it into a variable.
+Not every CLI will be able to be automated with this tool, complex GUIs and other flows may not be able to be fully automated and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. Other times a library like this may be overkill, when all you need to do is take the result of a command and pipe it into a variable or analyze for a match.
 ```powershell
 # Example of forwarding the result of a command into a variable
 $nodeVersion = & node -v
+if ($nodeVersion -match "V18.*")
+{
+	Write-Host "Node.js version satisfactory!"
+}
 Write-Host "Node.js Version: $nodeVersion"
 ```
 
@@ -180,27 +184,6 @@ Wait for a desired piece of text to appear in the spawned PowerShell process by 
 ```powershell
 $nodeVersion = $myProcess.Expect("v18.*", 10, $true)
 $myProcess.Expect("login success")
-```
-
-### SendKeys
-
-#### Synopsis
-
-Send a key input such as Enter, Up Arrow, Page Up, etc.
-
-See all available inputs here: https://learn.microsoft.com/en-us/dotnet/api/system.consolekey
-
-#### Parameters
-
-| Parameter Name (* = Required) | Description                                                  | Type                | Default | Example    |
-| ----------------------------- | ------------------------------------------------------------ | ------------------- | ------- | ---------- |
-| Simultaneous                  | Keys to send to the spawned PowerShell process that will all be pressed together at the same time, these will also be held as the sequential keys are pressed | string (ConsoleKey) |         | "UpArrow"  |
-| Sequential                    | Keys to send to the spawned PowerShell process that will be pressed on after the other | string (ConsoleKey) |         | "OemMinus" |
-
-#### Example
-
-```powershell
-$myProcess.SendKeys(@('Enter', 'OemMinus'), @('Delete'))
 ```
 
 ### SendAndWait

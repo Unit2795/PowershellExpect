@@ -12,13 +12,19 @@ using System.Linq;
  */
 public class PowershellExpectHandler
 {
+    // Store a handler for the spawned PowerShell process
     Process process = new Process();
+    // Buffer that contains the output of the process
     private List<string> output = new List<string>();
+    // Global timeout set by the spawn command
     private int? timeoutSeconds = null;
+    // Whether logging has been enabled or not
     private bool loggingEnabled = false;
 
+    // Starts the PowerShell process, attaches listeners, and initializes variables
     public System.Diagnostics.Process StartProcess(string workingDirectory, int? timeout, bool enableLogging)
     {
+        // Set the color of the output to help differentiate it from normal user terminal
         Console.ForegroundColor = ConsoleColor.Blue;
         
         // If a timeout was provided, override the global timeout
@@ -26,8 +32,10 @@ public class PowershellExpectHandler
         {
             timeoutSeconds = timeout;
         }
+        // Assuming the user has enabled logging we'll set the global variable
         loggingEnabled = enableLogging;
 
+        // Log info message about the process startup
         if (loggingEnabled)
         {
             InfoMessage("Starting process...");
@@ -60,7 +68,7 @@ public class PowershellExpectHandler
         return process;
     }
 
-    // Log a message to keep the user appraised of 
+    // Log a message to keep the user appraised of progress
     private void InfoMessage(string message)
     {
         Console.ForegroundColor = ConsoleColor.Green;
@@ -69,10 +77,12 @@ public class PowershellExpectHandler
         Console.ForegroundColor = ConsoleColor.Blue;
     }
     
+    // Event handler for output messages. Places the output into an array of strings. 
     private void ProcessOutputHandler(object sender, DataReceivedEventArgs args)
     {
         void AppendOutput(string data, int maxLength)
         {
+            // Log received output if logging is enabled
             if (loggingEnabled)
             {
                 Console.WriteLine(data);
@@ -95,8 +105,10 @@ public class PowershellExpectHandler
         }
     }
     
+    // Close out the spawned process and detach event handlers
     public void Exit()
     {
+        // Log info message about the process shutdown
         if (loggingEnabled)
         {
             InfoMessage("Closing process...");
@@ -118,11 +130,13 @@ public class PowershellExpectHandler
         process.Close();
     }
     
+    // Write a command to the spawned PowerShell process
     public void Send(string command, bool noNewline = false)
     {
         process.StandardInput.Write(command + (noNewline ? "" : "\n"));
     }
     
+    // Write a command to the spawned PowerShell process and wait for the output buffer to be idle for a set duration
     public string SendAndWait(string command, int ignoreLines, int idleDurationSeconds, bool noNewline = false)
     {
         // Send the command
@@ -159,11 +173,14 @@ public class PowershellExpectHandler
         return trimmedOutput;
     }
     
+    // Observe the output of the spawned PowerShell process and wait for a desired result to be encountered
     public string? Expect(string regexString, int? timeoutMs, bool continueOnTimeout)
     {
         // Convert incoming regex string to actual Regex
         Regex regex = new Regex(regexString);
+        // Variable for storing if a match has been received
         bool matched = false;
+        // Variable for storing if there is a timeout, 0 indicates no timeout
         int? timeout = 0;
         
         // If a timeout was provided specifically to this expect, override any global settings
@@ -171,6 +188,7 @@ public class PowershellExpectHandler
         {
             timeout = timeoutMs;
         }
+        //
         else if (timeoutSeconds > 0) 
         {
             timeout = timeoutSeconds;
@@ -181,11 +199,13 @@ public class PowershellExpectHandler
         // While no match is found (or no timeout occurs), continue to evaluate output until match is found
         do
         {
+            // For each item found in the input, evaluate it for a match
             foreach (string item in output)
             {
                 Match match = regex.Match(item);
                 if (match.Success)
                 {
+                    // Log the match if logging is enabled
                     if (loggingEnabled)
                     {
                         InfoMessage("Match found: " + item);
@@ -210,7 +230,7 @@ public class PowershellExpectHandler
                 }
                 else
                 {
-                    Console.WriteLine(timeoutMessage);
+                    InfoMessage(timeoutMessage);
                 }
                 break;
             }
@@ -221,72 +241,4 @@ public class PowershellExpectHandler
 
         return null;
     }
-    
-    public void SendKeys(List<List<string>> keyGroups)
-    {
-        foreach (var keyGroup in keyGroups)
-        {
-            ConsoleModifiers modifiers = default;
-
-            // First, process the modifier keys
-            foreach (var keyName in keyGroup)
-            {
-                if (keyName.ToLower() == "shift") modifiers |= ConsoleModifiers.Shift;
-                else if (keyName.ToLower() == "alt") modifiers |= ConsoleModifiers.Alt;
-                else if (keyName.ToLower() == "ctrl") modifiers |= ConsoleModifiers.Control;
-            }
-
-            // Then, process the actual keys
-            foreach (var keyName in keyGroup)
-            {
-                var key = GetConsoleKeyFromString(keyName);
-
-                if (key == null)
-                {
-                    throw new ArgumentException($"The key '{keyName}' is not supported. Please use a valid ConsoleKey name.");
-                }
-
-                // Skip if it's a modifier key since we've already processed them
-                if (keyName.ToLower() == "shift" || keyName.ToLower() == "alt" || keyName.ToLower() == "ctrl") continue;
-
-                char charRepresentation = keyName.Length == 1 ? keyName[0] : (char)key;
-                var keyInfo = new ConsoleKeyInfo(charRepresentation, key.Value, 
-                                                 (modifiers & ConsoleModifiers.Shift) != 0, 
-                                                 (modifiers & ConsoleModifiers.Alt) != 0, 
-                                                 (modifiers & ConsoleModifiers.Control) != 0);
-
-                // Send each key individually
-                SendKeyInfo(keyInfo);
-            }
-        }
-    }
-
-    private ConsoleKey? GetConsoleKeyFromString(string keyName)
-    {
-        foreach (ConsoleKey key in Enum.GetValues(typeof(ConsoleKey)))
-        {
-            if (key.ToString().Equals(keyName, StringComparison.OrdinalIgnoreCase))
-                return key;
-        }
-        return null;
-    }
-
-    private void SendKeyInfo(ConsoleKeyInfo keyInfo)
-    {
-        byte[] bytes;
-
-        // If the key is alphanumeric, send only the char representation
-        if (char.IsLetterOrDigit(keyInfo.KeyChar) || char.IsPunctuation(keyInfo.KeyChar) || char.IsWhiteSpace(keyInfo.KeyChar))
-        {
-            bytes = new byte[] { (byte)keyInfo.KeyChar };
-        }
-        else
-        {
-            bytes = new byte[] { (byte)keyInfo.Key };
-        }
-
-        process.StandardInput.BaseStream.Write(bytes, 0, bytes.Length);
-        process.StandardInput.BaseStream.Flush();
-    }
 }
-
