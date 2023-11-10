@@ -4,21 +4,15 @@ Mimic Linux Expect, Spawn, and Send commands in Powershell for easy interactive 
 
 ---
 
-## Table of Contents
-
-[TOC]
-
----
-
 ## Motivation
 
-Sometimes easily automated CLIs/APIs are not available for tools we need to use. This library helps automate some of those CLIs that are designed with interactivity in mind.
+This library helps automate some of those CLIs that are designed with interactivity in mind and an easier to automate programmatic CLI/API is not available.
 
-Not every CLI will be able to be automated with this tool, complex GUIs and other flows may not be able to be fully automated and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. It's also difficult to send simulated keystrokes (arrow keys, ctrl, etc) to CLIs with this library, if you find you need this feature, open an issue and we may consider looking into this more seriously.
+Not every CLI, GUI and other flows will be able to be automated with this tool and you may need to investigate more advanced RPA solutions. Like most automations like this, it's also possible that an update will break the functionality of your script or this library. It's also difficult to send simulated keystrokes (arrow keys, ctrl, etc) to CLIs with this library, if you find you need this feature, open an issue and we may consider looking into this more seriously.
 
 ### You may not need this library
 
-Other times a library like this may be overkill, when all you need to do is take the result of a command and pipe it into a variable or analyze for a match. PowerShell on its own is already quite capable of producing quite advanced CLI automations. Evaluate your usecase carefully and try to automate without a library first. If you need to work with long running processes, share results between multiple simultaneously running processes, or simplify your automation script; this library may be helpful. If you find that this library is missing a feature, please create a repo issue!
+A library like this may be overkill when all you need to do is take the result of a command and pipe it into a variable. PowerShell on its own is already quite capable of producing advanced automations. Evaluate your usecase carefully and try to automate without a library first. If you need to work with long running processes, share results between multiple simultaneously running processes, or simplify your automation script; this library may be helpful. If you find that this library is missing a feature, please create a GitHub issue!
 
 ```powershell
 # Example of forwarding the result of a command into a variable
@@ -37,7 +31,6 @@ Write-Host "Node.js Version: $nodeVersion"
 - Run multiple processes in parallel and share data between them
 - Expect results in the output using regex or wait until the output is idle for a specified duration
 - Store outputs retrieved from Send commands or Expect statements for processing
-- Send keystrokes in combination and sequentially
 
 ---
 
@@ -66,8 +59,8 @@ $session.Send("npm -v", $true)
 $npm = $session.Expect("10.*")
 $session.Exit()
 
-Write-Host "Node Version: $node PNPM"
-Write-Host "NPM Version: $npm PNPM"
+Write-Host "Node Version: $node"
+Write-Host "NPM Version: $npm"
 ```
 
 **Advanced Example**
@@ -136,7 +129,7 @@ $session.Exit()
 
 #### Synopsis
 
-Spawn a child PowerShell process to run commands in and optionally specify a timeout for Expect statements (if a result is not received within the timeout, an error is thrown). Returns a process handler that you will issue all subsequent commands to
+Spawn a child PowerShell process to run commands in and optionally specify a timeout for Expect statements (if a result is not received within the timeout, an error or warning is thrown). Returns a process handler object that you will issue all subsequent commands to.
 
 #### Parameters
 
@@ -159,10 +152,10 @@ Send text input to the spawned PowerShell process
 
 #### Parameters
 
-| Parameter Name (* = Required) | Description                                                  | Type    | Example    |
-| ----------------------------- | ------------------------------------------------------------ | ------- | ---------- |
-| Command*                      | Command to run in the spawned process                        | string  | node -v    |
-| NoNewline                     | A newline is automatically appended, you can disable this behavior with this flag and then send the newline character manually as you wish "\n" | boolean | -NoNewline |
+| Parameter Name (* = Required) | Description                                                  | Type    | Default | Example    |
+| ----------------------------- | ------------------------------------------------------------ | ------- | ------- | ---------- |
+| Command*                      | Command to run in the spawned process                        | string  |         | node -v    |
+| NoNewline                     | A newline is automatically appended, you can disable this behavior with this flag and then send the newline character manually as you wish "\n" | boolean | false   | -NoNewline |
 
 #### Example
 
@@ -178,11 +171,11 @@ Wait for a desired piece of text to appear in the spawned PowerShell process by 
 
 #### Parameters
 
-| Parameter Name (* = Required) | Description                                                  | Type    | Example            |
-| ----------------------------- | ------------------------------------------------------------ | ------- | ------------------ |
-| Regex*                        | Regular expression to search for a match to                  | string  | node -v            |
-| Timeout                       | Time in seconds to wait for a match to the regex             | int     | 10                 |
-| ContinueOnTimeout             | Set this flag if you wish to continue despite a timeout, a message indicating the timeout will be displayed still | boolean | -ContinueOnTimeout |
+| Parameter Name (* = Required) | Description                                                  | Type    | Default | Example            |
+| ----------------------------- | ------------------------------------------------------------ | ------- | ------- | ------------------ |
+| Regex*                        | Regular expression to search for a match to                  | string  |         | node -v            |
+| Timeout                       | Time in seconds to wait for a match to the regex             | int     | None    | 10                 |
+| ContinueOnTimeout             | Set this flag if you wish to continue despite a timeout, a message indicating the timeout will be displayed still | boolean | false   | -ContinueOnTimeout |
 
 #### Example
 
