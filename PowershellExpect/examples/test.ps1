@@ -10,7 +10,9 @@ Import-Module "..\PowershellExpect.psm1"
 
 # Check Node Version
 $nodeProcess = Spawn -Timeout 5 -EnableLogging
-$nodeProcess.Send("node -v")
+$nodeProcess.Send("node -v", $true)
+<#$nodeProcess.Send("\u001B[D", $false)#>
+<#
 $node = $nodeProcess.Expect("v18.*")
 $nodeProcess.Exit()
 
@@ -36,4 +38,4 @@ if ($node -match "v18.18.0")
 else
 {
     Write-Host "Node version must be 18.18.0"
-}
+}#>

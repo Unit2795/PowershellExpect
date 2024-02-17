@@ -1,4 +1,5 @@
-Add-Type -Path  "$PSScriptRoot/PowershellExpect.cs"
+$driverDLL = Join-Path $PSScriptRoot "PowershellExpectDriver.dll"
+Add-Type -Path $driverDLL
 
 <# 
 #   Spawn a child PowerShell process to execute commands in.
@@ -13,25 +14,24 @@ function Spawn {
     try
     {
         # Initialize a new instance of the C# driver object
-        $processHandler = New-Object PowershellExpectHandler
+        $driver = New-Object PowershellExpectDriver.PTYDriver
         
         # Start the process
-        $process = $processHandler.StartProcess($PWD, $Timeout, $EnableLogging)
+        $pty = $driver.StartProcess($PWD, $Timeout, $EnableLogging)
 
         # Store the ProcessHandler instance in the process object to ensure that the spawned process is persisted
-        $process | Add-Member -MemberType NoteProperty -Name "ProcessHandler" -Value $processHandler
+        $pty | Add-Member -MemberType NoteProperty -Name "PTYDriver" -Value $driver
         
         # START COMMANDS
-        # Attach all of the commands to the process object
-        $process | Add-Member -MemberType ScriptMethod -Name "Send" -Value {
+        # Attach commands to the object
+        $pty | Add-Member -MemberType ScriptMethod -Name "Send" -Value {
             param(
                 [string]$CommandToSend,
                 [switch]$NoNewline = $false
             )
-            # Use stored HandlerInstance to send the command
-            $this.ProcessHandler.Send($CommandToSend, $NoNewline)
+            $this.PTYDriver.Send($CommandToSend, $NoNewline)
         }
-        $process | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
+        $pty | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
             param(
                 [string]$Command,
                 [int]$IgnoreLines = 0,
@@ -47,7 +47,7 @@ function Spawn {
                 throw
             }
         }
-        $process | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
+        $pty | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
             param(
                 [string]$Regex,
                 [int]$Timeout = $null,
@@ -62,7 +62,7 @@ function Spawn {
                 throw
             }
         }
-        $process | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
+        $pty | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
             try
             {
                 return $this.ProcessHandler.Exit()
@@ -74,7 +74,7 @@ function Spawn {
         }
         # END COMMANDS
 
-        return $process
+        return $pty
     } catch {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
