@@ -10,13 +10,14 @@
 Remove-Module -Name "PowershellExpect"
 
 # Import the development version of PowershellExpect
-Import-Module "..\PowershellExpect.psm1"
+$module = Join-Path $PSScriptRoot "../PowershellExpect/PowershellExpect.psm1"
+Import-Module $module
 
 # Check Node Version
 $nodeProcess = Spawn -Timeout 5 -EnableLogging
 $nodeProcess.Send("cd C:\Users\david\OneDrive\Desktop\testdir")
 $nodeProcess.Send("pnpm create tauri-app")
-$nodeProcess.Expect("Project name")
+$nodeProcess.Expect("Project name 123", @{timeout = 10})
 $nodeProcess.Send(".")
 $nodeProcess.Expect("Package")
 $nodeProcess.Send("hello-world")
@@ -24,10 +25,9 @@ $nodeProcess.Send("hello-world")
 $nodeProcess.Send("y", $true)#>
 $nodeProcess.Expect("Choose which language")
 $nodeProcess.Send($arrowDown)
+$nodeProcess.Exit();
 Write-Host "Finished"
 
-# TODO: REMOVE THIS AFTER POWERSHELL EXPECT EXIT FUNCTIONALITY IS REIMPLEMENTED
-taskkill /IM pwsh.exe /F
 #Write-Host "Value: $val"
 <#$nodeProcess.Send("\u001B[D", $false)#>
 <#

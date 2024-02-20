@@ -21,6 +21,11 @@ namespace PowershellExpectDriver
             }
             loggingEnabled = enableLogging;
             
+            if (loggingEnabled)
+            {
+                InfoMessage("Starting process...");
+            }
+            
             try
             {
                 pty.OutputReceived += HandleOutput;
@@ -41,13 +46,54 @@ namespace PowershellExpectDriver
             pty.CopyInputToPipe(command, noNewline);
         }
         
+        public string SendAndWait(string command, int ignoreLines, int idleDurationSeconds, bool noNewline = false)
+        {
+            // Send the command
+            Send(command, noNewline);
+
+            // Capture the initial timestamp
+            var startTime = DateTimeOffset.Now;
+            var endTime = startTime.AddSeconds(idleDurationSeconds);
+            var idleOutput = output;
+
+            // Loop until the idle duration expires
+            while (DateTimeOffset.Now < endTime)
+            {
+                Thread.Sleep(200);
+
+                // If there is new output, append it to the idle output and reset the timer
+                if (output.Length > 0)
+                {
+                    startTime = DateTimeOffset.Now;
+                    endTime = startTime.AddSeconds(idleDurationSeconds);
+                    
+                    // Append any new output and clear the buffer
+                    idleOutput += output;
+                    output = "";
+                }
+            }
+            
+            // Split the string into lines, remove the requested number of lines from the start, and join them back together
+            // Most useful for removing the command echo from the output
+            var trimmedOutput = string.Join("\n", idleOutput.Split('\n').Skip(ignoreLines));
+
+            // Return the captured output during idle time as a single string
+            return trimmedOutput;
+        }
+        
         public struct ExpectData(string terminalOutput, string match)
         {
             public string terminalOutput = terminalOutput;
             public string match = match;
         }
         
-        public ExpectData? Expect(string regexString, int? timeoutSec, bool continueOnTimeout)
+        public struct ExpectConfig(int? timeout, bool? continueOnTimeout)
+        {
+            public int timeout = timeout ?? 0;
+            public bool continueOnTimeout = continueOnTimeout ?? false;
+        }
+        
+        public ExpectData? Expect(string regexString, ExpectConfig? config)
         {
             // Convert incoming regex string to actual Regex
             Regex regex = new Regex(regexString);
@@ -57,11 +103,10 @@ namespace PowershellExpectDriver
             int? timeout = 0;
             
             // If a timeout was provided specifically to this expect, override any global settings
-            if (timeoutSec > 0)
+            if (config?.timeout > 0)
             {
-                timeout = timeoutSec;
+                timeout = config?.timeout;
             }
-            //
             else if (timeoutSeconds > 0) 
             {
                 timeout = timeoutSeconds;
@@ -76,10 +121,10 @@ namespace PowershellExpectDriver
                 if (match.Success)
                 {
                     // Log the match if logging is enabled
-                    /*if (loggingEnabled)
+                    if (loggingEnabled)
                     {
-                        InfoMessage("Match found: " + item);
-                    }*/
+                        InfoMessage("Match found: " + match.Value);
+                    }
 
                     matched = true;
                     return new ExpectData(output, match.Value);
@@ -92,15 +137,12 @@ namespace PowershellExpectDriver
                 {
                     string timeoutMessage = String.Format("Timed out waiting for: '{0}'", regexString);
                     matched = true;
-                    if (!continueOnTimeout)
+                    InfoMessage(timeoutMessage);
+                    if (config?.continueOnTimeout != true)
                     {
-                        /*this.Exit();*/
-                        throw new Exception(timeoutMessage);
+                        Exit();
+                        Environment.Exit(1);
                     }
-                    /*else
-                    {
-                        InfoMessage(timeoutMessage);
-                    }*/
                     break;
                 }
                 
@@ -109,6 +151,19 @@ namespace PowershellExpectDriver
             } while (!matched);
 
             return null;
+        }
+        
+        public void Exit()
+        {
+            // Log info message about the process shutdown
+            if (loggingEnabled)
+            {
+                InfoMessage("Closing process...");
+            }
+            
+            pty.OutputReceived -= HandleOutput;
+            
+            pty.DisposeResources();
         }
         
         private void HandleOutput(object? sender, string outputBuffer)
@@ -125,6 +180,15 @@ namespace PowershellExpectDriver
             }
             
             output = newOutput;
+        }
+        
+        // Log a message to keep the user appraised of progress
+        private void InfoMessage(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(message);
+            // Revert back to default color after logging info message
+            Console.ForegroundColor = ConsoleColor.Blue;
         }
     }
 }

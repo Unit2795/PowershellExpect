@@ -38,19 +38,28 @@ function Spawn {
         }
         $pty | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
             param(
-                [string]$Regex,
-                [int]$Timeout = $null,
-                [switch]$ContinueOnTimeout
+                $Regex,
+                $Config
             )
             try
             {
                 $isCaptured = Test-OutputCaptured
 
-                $result = $this.PTYDriver.Expect($Regex, $Timeout, $ContinueOnTimeout)
+                $result = $this.PTYDriver.Expect($Regex, $Config)
                 
                 if ($isCaptured) {
                     return $result
                 }
+            } catch {
+                Write-Warning "PowershellExpect encountered an error!"
+                Write-Error $_
+                throw
+            }
+        }
+        $pty | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
+            try
+            {
+                return $this.PTYDriver.Exit()
             } catch {
                 Write-Warning "PowershellExpect encountered an error!"
                 Write-Error $_
@@ -69,16 +78,6 @@ function Spawn {
             try
             {
                 $this.ProcessHandler.SendAndWait($Command, $IgnoreLines, $WaitForIdle, $NoNewline)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        $pty | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
-            try
-            {
-                return $this.ProcessHandler.Exit()
             } catch {
                 Write-Warning "PowershellExpect encountered an error!"
                 Write-Error $_

@@ -3,7 +3,9 @@
 #   simulated remote server (another PowerShell script).
 #>
 
-Import-Module "..\PowershellExpect.psm1"
+$module = Join-Path $PSScriptRoot "../PowershellExpect/PowershellExpect.psm1"
+Import-Module $module
+
 $simulatedServerScriptPath = "./simulator.ps1 -Listen"
 
 # Create a new session with complex_tool

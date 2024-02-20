@@ -3,10 +3,10 @@
     Author            = 'David Jozwik'
     Description       = 'Linux-style Expect, Spawn, and Send commands in Powershell for CLI automation.
     
-    More documenation & example can be found in Github Repository: 
+    Documenation & examples can be found in Github repo: 
     https://github.com/Unit2795/PowershellExpect
     
-    MIT licensed. No external dependencies.
+    MIT licensed.
     
     Keywords:
     automation, RPA, expect, spawn, send, linux, bash, CLI, regex, automate, interactive, terminal, async, thread-safe, batch, script, scripting, scripted, library, tool, tools, tooling, assert, task, IT
@@ -18,7 +18,7 @@
     PrivateData = @{
         PSData = @{
             Tags = @('automation', 'RPA', 'expect', 'spawn', 'send', 'linux', 'bash', 'CLI', 'regex', 'automate', 'interactive', 'terminal', 'async', 'thread-safe', 'batch', 'script', 'library', 'tool', 'tools', 'tooling', 'assert', 'task', 'IT', 'console')
-            ProjectUri = 'https://www.powershellgallery.com/packages/PowershellExpect'
+            ProjectUri = 'https://github.com/Unit2795/PowershellExpect'
         }
     }
 }
