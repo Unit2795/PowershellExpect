@@ -1,5 +1,10 @@
+# Import primary driver DLL
 $driverDLL = Join-Path $PSScriptRoot "PowershellExpectDriver.dll"
 Add-Type -Path $driverDLL
+
+# Import helper functions
+$helpers = Join-Path $PSScriptRoot "Helpers.ps1"
+. $helpers
 
 <# 
 #   Spawn a child PowerShell process to execute commands in.
@@ -14,7 +19,7 @@ function Spawn {
     try
     {
         # Initialize a new instance of the C# driver object
-        $driver = New-Object PowershellExpectDriver.PTYDriver
+        $driver = New-Object PowershellExpectDriver.Driver
         
         # Start the process
         $pty = $driver.StartProcess($PWD, $Timeout, $EnableLogging)
@@ -31,6 +36,29 @@ function Spawn {
             )
             $this.PTYDriver.Send($CommandToSend, $NoNewline)
         }
+        $pty | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
+            param(
+                [string]$Regex,
+                [int]$Timeout = $null,
+                [switch]$ContinueOnTimeout
+            )
+            try
+            {
+                $isCaptured = Test-OutputCaptured
+
+                $result = $this.PTYDriver.Expect($Regex, $Timeout, $ContinueOnTimeout)
+                
+                if ($isCaptured) {
+                    return $result
+                }
+            } catch {
+                Write-Warning "PowershellExpect encountered an error!"
+                Write-Error $_
+                throw
+            }
+        }
+        
+        
         $pty | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
             param(
                 [string]$Command,
@@ -41,21 +69,6 @@ function Spawn {
             try
             {
                 $this.ProcessHandler.SendAndWait($Command, $IgnoreLines, $WaitForIdle, $NoNewline)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        $pty | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
-            param(
-                [string]$Regex,
-                [int]$Timeout = $null,
-                [switch]$ContinueOnTimeout
-            )
-            try
-            {
-                return $this.ProcessHandler.Expect($Regex, $Timeout, $ContinueOnTimeout)
             } catch {
                 Write-Warning "PowershellExpect encountered an error!"
                 Write-Error $_

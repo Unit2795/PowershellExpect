@@ -1,0 +1,6 @@
+﻿<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Rebuild" type="PowerShellRunType" factoryName="PowerShell" scriptUrl=".\scripts\clean-build.ps1" workingDirectory="$SolutionDir$" executablePath="C:\Program Files\PowerShell\7\pwsh.exe">
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>

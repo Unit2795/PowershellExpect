@@ -1,22 +1,23 @@
 @{
     GUID = 'fc079b21-a082-4ad2-ab8f-387482b4c369'
     Author            = 'David Jozwik'
-    Description       = 'Mimic Linux Expect, Spawn, and Send commands in Powershell for easy CLI automation, without any external dependencies!
+    Description       = 'Linux-style Expect, Spawn, and Send commands in Powershell for CLI automation.
     
-    More info & examples: https://github.com/Unit2795/PowershellExpect
+    More documenation & example can be found in Github Repository: 
+    https://github.com/Unit2795/PowershellExpect
+    
+    MIT licensed. No external dependencies.
     
     Keywords:
-    automation, RPA, expect, spawn, send, linux, bash, CLI, async, thread-safe, regex
-    
-    MIT licensed!
+    automation, RPA, expect, spawn, send, linux, bash, CLI, regex, automate, interactive, terminal, async, thread-safe, batch, script, scripting, scripted, library, tool, tools, tooling, assert, task, IT
     '
-    FunctionsToExport = 'Expect', 'Send', 'Spawn'
+    FunctionsToExport = 'Spawn'
     ModuleVersion     = '1.2.0'
     RootModule        = 'PowershellExpect.psm1'
-    PowerShellVersion = '7.0'
+    PowerShellVersion = '5.0'
     PrivateData = @{
         PSData = @{
-            Tags = 'automation', 'RPA', 'expect', 'spawn', 'send', 'linux', 'bash', 'CLI', 'regex'
+            Tags = @('automation', 'RPA', 'expect', 'spawn', 'send', 'linux', 'bash', 'CLI', 'regex', 'automate', 'interactive', 'terminal', 'async', 'thread-safe', 'batch', 'script', 'library', 'tool', 'tools', 'tooling', 'assert', 'task', 'IT', 'console')
             ProjectUri = 'https://www.powershellgallery.com/packages/PowershellExpect'
         }
     }

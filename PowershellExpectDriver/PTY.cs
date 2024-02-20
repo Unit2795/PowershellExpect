@@ -1,9 +1,5 @@
 ﻿using Microsoft.Win32.SafeHandles;
-using System;
-using System.IO;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using static PowershellExpectDriver.PInvoke;
 
@@ -16,10 +12,10 @@ namespace PowershellExpectDriver
         private PseudoConsolePipe? inputPipe;
         private PseudoConsolePipe? outputPipe;
 
-        public PTY()
+        /*public PTY()
         {
             EnableVirtualTerminalSequenceProcessing();
-        }
+        }*/
 
         public void Run(string workingDirectory = "/")
         {
@@ -53,19 +49,29 @@ namespace PowershellExpectDriver
             var writer = new StreamWriter(new FileStream(inputPipe!.WriteSide, FileAccess.Write));
             writer.AutoFlush = true;
             
-            // Append the VT sequence for left arrow before the command
-            string leftArrowSequence = "\u001B[D"; // ESC [ D
-            command += leftArrowSequence;
-            
-            command += "123";
-            
             if (!noNewline)
             {
                 // Append the appropriate newline character(s) based on the operating system.
-                command += Environment.NewLine; ;
+                command += Environment.NewLine;
             }
             
             writer.Write(command);
+        }
+        
+        // Read the child process output and write it to an event handler for processing
+        private async void CopyPipeToOutput(SafeFileHandle outputReadSide)
+        {
+            using (var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read))
+            {
+                var buffer = new byte[4096]; // 4KB default buffer size
+                int bytesRead;
+            
+                while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, buffer.Length)) > 0) 
+                {
+                    string outputChunk = Encoding.Default.GetString(buffer, 0, bytesRead);
+                    OutputReceived?.Invoke(null,  outputChunk);
+                }
+            }
         }
         
         private static void EnableVirtualTerminalSequenceProcessing()
@@ -76,26 +82,10 @@ namespace PowershellExpectDriver
                 throw new InvalidOperationException("Could not get console mode");
             }
 
-            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             if (!SetConsoleMode(hStdOut, outConsoleMode))
             {
                 throw new InvalidOperationException("Could not enable virtual terminal processing");
-            }
-        }
-        
-        // Read the child process output and write it to an event handler for processing
-        private void CopyPipeToOutput(SafeFileHandle outputReadSide)
-        {
-            using (var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read))
-            {
-                var buffer = new byte[4096]; // 4KB default buffer size
-                int bytesRead;
-
-                while ((bytesRead = pseudoConsoleOutput.Read(buffer, 0, buffer.Length)) > 0) 
-                {
-                    string outputChunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    OutputReceived?.Invoke(null, outputChunk);
-                }
             }
         }
         

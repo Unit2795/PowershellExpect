@@ -6,11 +6,29 @@
 #    This script requires you to have node, npm, and pnpm installed, adjust as necessary.
 #>
 
+# Unload the release version of PowershellExpect so it doesn't interfere with the development version
+Remove-Module -Name "PowershellExpect"
+
+# Import the development version of PowershellExpect
 Import-Module "..\PowershellExpect.psm1"
 
 # Check Node Version
 $nodeProcess = Spawn -Timeout 5 -EnableLogging
-$nodeProcess.Send("node -v", $true)
+$nodeProcess.Send("cd C:\Users\david\OneDrive\Desktop\testdir")
+$nodeProcess.Send("pnpm create tauri-app")
+$nodeProcess.Expect("Project name")
+$nodeProcess.Send(".")
+$nodeProcess.Expect("Package")
+$nodeProcess.Send("hello-world")
+<#$nodeProcess.Expect("Current directory directory is not empty")
+$nodeProcess.Send("y", $true)#>
+$nodeProcess.Expect("Choose which language")
+$nodeProcess.Send($arrowDown)
+Write-Host "Finished"
+
+# TODO: REMOVE THIS AFTER POWERSHELL EXPECT EXIT FUNCTIONALITY IS REIMPLEMENTED
+taskkill /IM pwsh.exe /F
+#Write-Host "Value: $val"
 <#$nodeProcess.Send("\u001B[D", $false)#>
 <#
 $node = $nodeProcess.Expect("v18.*")
