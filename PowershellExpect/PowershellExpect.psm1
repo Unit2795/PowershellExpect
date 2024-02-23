@@ -6,87 +6,57 @@ Add-Type -Path $driverDLL
 $helpers = Join-Path $PSScriptRoot "Helpers.ps1"
 . $helpers
 
-<# 
-#   Spawn a child PowerShell process to execute commands in.
-#   Returns an object containing the functions you may execute against the spawned PowerShell process.
-#>
 function Spawn {
     param(
-        # Timeout in seconds
-        [int]$Timeout = $null,
-        [switch]$EnableLogging = $false
+        [ScriptBlock]$ScriptBlock,
+        $Process,
+        [int]$Timeout = 0,
+        [switch]$EnableLogging = $false,
+        [switch]$ShowTerminal = $false
     )
-    try
+
+    if ($null -eq $Process)
     {
         # Initialize a new instance of the C# driver object
-        $driver = New-Object PowershellExpectDriver.Driver
-        
-        # Start the process
-        $pty = $driver.StartProcess($PWD, $Timeout, $EnableLogging)
+        $pty = New-Object PowershellExpectDriver.Driver
 
-        # Store the ProcessHandler instance in the process object to ensure that the spawned process is persisted
-        $pty | Add-Member -MemberType NoteProperty -Name "PTYDriver" -Value $driver
-        
-        # START COMMANDS
-        # Attach commands to the object
-        $pty | Add-Member -MemberType ScriptMethod -Name "Send" -Value {
-            param(
-                [string]$CommandToSend,
-                [switch]$NoNewline = $false
-            )
-            $this.PTYDriver.Send($CommandToSend, $NoNewline)
-        }
-        $pty | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
-            param(
-                $Regex,
-                $Config
-            )
-            try
-            {
-                $isCaptured = Test-OutputCaptured
+        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null
 
-                $result = $this.PTYDriver.Expect($Regex, $Config)
-                
-                if ($isCaptured) {
-                    return $result
-                }
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
+        $driver = $pty
+    }
+    else 
+    {
+        $driver = $Process
+    }
+
+    $ExecutionContext.InvokeCommand.InvokeScript($true, $ScriptBlock, $null, $driver) | Out-Null
+
+    if (Test-OutputCaptured) {
+        Write-Host "Output Captured"
+        
+        return $driver
+    }
+}
+
+function Send {
+    param(
+        [string]$Command,
+        [switch]$NoNewline = $false,
+        [int]$IdleDuration = 0,
+        [int]$IgnoreLines = 0
+    )
+
+    try
+    {
+        $result = $driver.Send($Command, $NoNewline, $IdleDuration, $IgnoreLines)
+        
+        if ($null -ne $result) {
+            $isCaptured = Test-OutputCaptured
+            
+            if ($isCaptured) {
+                return $result
             }
         }
-        $pty | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
-            try
-            {
-                return $this.PTYDriver.Exit()
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        
-        
-        $pty | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
-            param(
-                [string]$Command,
-                [int]$IgnoreLines = 0,
-                [int]$WaitForIdle = 3,
-                [switch]$NoNewline = $false
-            )
-            try
-            {
-                $this.ProcessHandler.SendAndWait($Command, $IgnoreLines, $WaitForIdle, $NoNewline)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        # END COMMANDS
-
-        return $pty
     } catch {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
@@ -94,4 +64,30 @@ function Spawn {
     }
 }
 
-Export-ModuleMember -Function Spawn
+function Expect {
+    param(
+        [string]$Regex,
+        [int]$Timeout = 0,
+        [switch]$ContinueOnTimeout = $false,
+        [switch]$EOF = $false
+    )
+
+    try
+    {
+        $result = $driver.Expect($Regex, $Timeout, $ContinueOnTimeout, $EOF)
+        
+        if ($null -ne $result) {
+            $isCaptured = Test-OutputCaptured
+
+            if ($isCaptured) {
+                return $result
+            }
+        }
+    } catch {
+        Write-Warning "PowershellExpect encountered an error!"
+        Write-Error $_
+        throw
+    }
+}
+
+Export-ModuleMember -Function Spawn, Send, Expect

@@ -1,7 +1,7 @@
 @{
     GUID = 'fc079b21-a082-4ad2-ab8f-387482b4c369'
     Author            = 'David Jozwik'
-    Description       = 'Linux-style Expect, Spawn, and Send commands in Powershell for CLI automation.
+    Description       = 'Interactive CLI automation inspired by Linux Expect.
     
     Documenation & examples can be found in Github repo: 
     https://github.com/Unit2795/PowershellExpect

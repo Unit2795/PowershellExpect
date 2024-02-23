@@ -13,47 +13,21 @@ Remove-Module -Name "PowershellExpect"
 $module = Join-Path $PSScriptRoot "../PowershellExpect/PowershellExpect.psm1"
 Import-Module $module
 
-# Check Node Version
-$nodeProcess = Spawn -Timeout 5 -EnableLogging
-$nodeProcess.Send("cd C:\Users\david\OneDrive\Desktop\testdir")
-$nodeProcess.Send("pnpm create tauri-app")
-$nodeProcess.Expect("Project name 123", @{timeout = 10})
-$nodeProcess.Send(".")
-$nodeProcess.Expect("Package")
-$nodeProcess.Send("hello-world")
-<#$nodeProcess.Expect("Current directory directory is not empty")
-$nodeProcess.Send("y", $true)#>
-$nodeProcess.Expect("Choose which language")
-$nodeProcess.Send($arrowDown)
-$nodeProcess.Exit();
-Write-Host "Finished"
+$process = Spawn {
+    Send "cd C:\Users\david\OneDrive\Desktop\testdir"
+    Send "Remove-Item -Path 'C:\Users\david\OneDrive\Desktop\testdir\*' -Recurse -Force"
+    Send "pnpm create tauri-app"
+    Expect "Project name"
+    Send "."
+    Expect "Package"
+    Send "hello-world"
+    Expect "Choose which language"
+    Send "`e[A"
+} -EnableLogging -Timeout 5
 
-#Write-Host "Value: $val"
-<#$nodeProcess.Send("\u001B[D", $false)#>
-<#
-$node = $nodeProcess.Expect("v18.*")
-$nodeProcess.Exit()
-
-# Check NPM version
-$npmProcess = Spawn -Timeout 5 -EnableLogging
-$npmProcess.Send("npm -v")
-$npm = $npmProcess.Expect("10.*")
-$npmProcess.Exit()
-
-# Check PNPM version
-$pnpmProcess = Spawn -EnableLogging
-$pnpm = $pnpmProcess.SendAndWait("pnpm -v", 2)
-$pnpmProcess.Exit()
-
-Write-Host "Node Version: $node Node"
-Write-Host "NPM Version: $npm NPM"
-Write-Host "PNPM Version: $pnpm PNPM"
-
-if ($node -match "v18.18.0")
-{
-    Write-Host "Node Version is Good (18.18.0)"
-}
-else
-{
-    Write-Host "Node version must be 18.18.0"
-}#>
+Spawn {
+    Expect "Choose your UI"
+    Send "`e[A"
+    Sleep 5
+    Expect -EOF
+} $process -EnableLogging -Timeout 5
