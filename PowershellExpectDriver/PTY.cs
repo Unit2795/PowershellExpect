@@ -1,5 +1,7 @@
 ﻿using Microsoft.Win32.SafeHandles;
 using System.Text;
+using System.Diagnostics;
+using System.IO.Pipes;
 using static PowershellExpectDriver.PInvoke;
 
 namespace PowershellExpectDriver
@@ -12,18 +14,24 @@ namespace PowershellExpectDriver
         private PTYPipe? outputPipe;
         private PTYHandler? ptyProcess;
         private Process? pwshProcess;
+        private System.Diagnostics.Process observerProcess;
+        private System.IO.Pipes.NamedPipeClientStream? pipeClient;
+        private StreamWriter? pipeWriter;
+        private string vtlog = "";
 
-        public PTY()
+        /*public PTY()
         {
             EnableVirtualTerminalSequenceProcessing();
-        }
+        }*/
 
         public void Run(string workingDirectory = "/")
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
-            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, (short)Console.WindowWidth, (short)Console.WindowHeight);
+            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 50);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, workingDirectory);
+            
+            CreateObserver();
             
             Task.Run(() => CopyPipeToOutput(outputPipe.ReadSide));
             
@@ -48,31 +56,74 @@ namespace PowershellExpectDriver
         public void CopyInputToPipe(string command, bool noNewline = false)
         {
             var writer = new StreamWriter(new FileStream(inputPipe!.WriteSide, FileAccess.Write));
-            writer.AutoFlush = true;
             
-            if (!noNewline)
+            if (noNewline)
             {
-                // Append the appropriate newline character(s) based on the operating system.
-                command += Environment.NewLine;
+                writer.Write(command);
             }
+            else
+            {
+                writer.WriteLine(command);
+            }
+            writer.Flush();
+        }
+
+        public void CreateObserver()
+        {
+            observerProcess = new System.Diagnostics.Process();
             
-            writer.Write(command);
+            string scriptContent = @"
+                # In the observer PowerShell window
+                $pipeName = 'observer'
+                $pipe = new-object System.IO.Pipes.NamedPipeServerStream($pipeName, [System.IO.Pipes.PipeDirection]::In)
+                $pipe.WaitForConnection()
+
+                $reader = New-Object System.IO.StreamReader($pipe)
+                
+                while ($true) {
+                    $line = $reader.Readline()
+                    if ($line -ne $null) {
+                        Write-Host $line -NoNewline
+                    }
+                }
+            ";
+            
+            observerProcess.StartInfo.FileName = "pwsh.exe";
+            observerProcess.StartInfo.Arguments = $"-ExecutionPolicy Bypass -Command {scriptContent}";
+            observerProcess.StartInfo.UseShellExecute = true;
+            observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+            observerProcess.StartInfo.CreateNoWindow = false;
+            
+            observerProcess.Start();
+            
+            string pipeName = "observer";
+            pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.Out);
+            pipeClient.Connect(30000);
+            pipeWriter = new StreamWriter(pipeClient);
+            pipeWriter.AutoFlush = true;
         }
         
         // Read the child process output and write it to an event handler for processing
-        private async void CopyPipeToOutput(SafeFileHandle outputReadSide)
+        private async Task CopyPipeToOutput(SafeFileHandle outputReadSide)
         {
-            using (var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read))
-            {
-                var buffer = new byte[4096]; // 4KB default buffer size
-                int bytesRead;
+            const int bufferLength = 4096;
+            var buffer = new byte[bufferLength];
+            int bytesRead;
+
+            var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read);
             
-                while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, buffer.Length)) > 0) 
-                {
-                    string outputChunk = Encoding.Default.GetString(buffer, 0, bytesRead);
-                    OutputReceived?.Invoke(null,  outputChunk);
-                }
+            while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, bufferLength)) > 0) 
+            {
+                string outputChunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                pipeWriter.WriteAsync(outputChunk);
+                OnOutputReceived(outputChunk);
             }
+        }
+        
+        protected virtual void OnOutputReceived(string outputChunk)
+        {
+            var handler = OutputReceived;
+            OutputReceived?.Invoke(this, outputChunk);
         }
         
         private static void EnableVirtualTerminalSequenceProcessing()
@@ -83,7 +134,7 @@ namespace PowershellExpectDriver
                 throw new InvalidOperationException("Could not get console mode");
             }
 
-            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
+            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING ;
             if (!SetConsoleMode(hStdOut, outConsoleMode))
             {
                 throw new InvalidOperationException("Could not enable virtual terminal processing");
@@ -104,6 +155,8 @@ namespace PowershellExpectDriver
         
         public void DisposeResources()
         {
+            observerProcess.Close();
+            
             Console.ResetColor();
             
             var disposables = new List<IDisposable?> { ptyProcess, pwshProcess, outputPipe, inputPipe };
@@ -167,9 +220,15 @@ namespace PowershellExpectDriver
         internal static PTYHandler Create(SafeFileHandle inputReadSide, SafeFileHandle outputWriteSide, int width, int height)
         {
             var createResult = CreatePseudoConsole(
-                new COORD { X = (short)width, Y = (short)height },
-                inputReadSide, outputWriteSide,
-                0, out IntPtr hPC);
+                new COORD {
+                    X = (short)width, 
+                    Y = (short)height
+                },
+                inputReadSide, 
+                outputWriteSide,
+                0, 
+                out IntPtr hPC
+            );
             if(createResult != 0)
             {
                 throw new InvalidOperationException("Could not create pseudo console. Error Code " + createResult);

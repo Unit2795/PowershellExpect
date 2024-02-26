@@ -18,6 +18,20 @@ namespace PowershellExpectDriver
             CTRL_LOGOFF_EVENT = 5,
             CTRL_SHUTDOWN_EVENT
         }
+        [StructLayout(LayoutKind.Explicit)]
+        public struct CHAR_INFO
+        {
+            [FieldOffset(0)] public char UnicodeChar;
+            [FieldOffset(2)] public short Attributes;
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SMALL_RECT
+        {
+            public short Left;
+            public short Top;
+            public short Right;
+            public short Bottom;
+        }
         
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern SafeFileHandle GetStdHandle(int nStdHandle);
@@ -30,6 +44,15 @@ namespace PowershellExpectDriver
         
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern bool SetConsoleCtrlHandler(ConsoleEventDelegate callback, bool add);
+        
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool WriteConsoleOutput(
+            IntPtr hConsoleOutput, 
+            CHAR_INFO[] lpBuffer, 
+            COORD dwBufferSize, 
+            COORD dwBufferCoord, 
+            ref SMALL_RECT lpWriteRegion
+        );
         
         
         // PTY P/Invoke native constants
@@ -45,7 +68,13 @@ namespace PowershellExpectDriver
         
         // PTY P/Invoke native functions
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern int CreatePseudoConsole(COORD size, SafeFileHandle hInput, SafeFileHandle hOutput, uint dwFlags, out IntPtr phPC);
+        internal static extern int CreatePseudoConsole(
+            COORD size, 
+            SafeFileHandle hInput, 
+            SafeFileHandle hOutput, 
+            uint dwFlags, 
+            out IntPtr phPC
+        );
 
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern int ResizePseudoConsole(IntPtr hPC, COORD size);
@@ -54,11 +83,17 @@ namespace PowershellExpectDriver
         internal static extern int ClosePseudoConsole(IntPtr hPC);
         
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        internal static extern bool CreatePipe(out SafeFileHandle hReadPipe, out SafeFileHandle hWritePipe, IntPtr lpPipeAttributes, int nSize);
+        internal static extern bool CreatePipe(
+            out SafeFileHandle hReadPipe, 
+            out SafeFileHandle hWritePipe, 
+            IntPtr lpPipeAttributes, 
+            int nSize
+        );
         
         
         // Process P/Invoke native functions
         internal const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+        internal const uint CREATE_NEW_CONSOLE = 0x00000010;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         internal struct STARTUPINFOEX
@@ -110,21 +145,37 @@ namespace PowershellExpectDriver
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool InitializeProcThreadAttributeList(
-            IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+            IntPtr lpAttributeList, 
+            int dwAttributeCount, 
+            int dwFlags, 
+            ref IntPtr lpSize
+        );
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool UpdateProcThreadAttribute(
-            IntPtr lpAttributeList, uint dwFlags, IntPtr attribute, IntPtr lpValue,
-            IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+            IntPtr lpAttributeList, 
+            uint dwFlags, 
+            IntPtr attribute, 
+            IntPtr lpValue,
+            IntPtr cbSize, 
+            IntPtr lpPreviousValue, 
+            IntPtr lpReturnSize
+        );
 
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool CreateProcess(
-            string lpApplicationName, string lpCommandLine, ref SECURITY_ATTRIBUTES lpProcessAttributes,
-            ref SECURITY_ATTRIBUTES lpThreadAttributes, bool bInheritHandles, uint dwCreationFlags,
-            IntPtr lpEnvironment, string lpCurrentDirectory, [In] ref STARTUPINFOEX lpStartupInfo,
-            out PROCESS_INFORMATION lpProcessInformation);
+            string lpApplicationName, 
+            string lpCommandLine, 
+            ref SECURITY_ATTRIBUTES lpProcessAttributes,
+            ref SECURITY_ATTRIBUTES lpThreadAttributes, 
+            bool bInheritHandles, uint dwCreationFlags,
+            IntPtr lpEnvironment, 
+            string lpCurrentDirectory, 
+            [In] ref STARTUPINFOEX lpStartupInfo,
+            out PROCESS_INFORMATION lpProcessInformation
+        );
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

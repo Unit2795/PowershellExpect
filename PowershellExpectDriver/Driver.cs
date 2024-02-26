@@ -1,8 +1,4 @@
-﻿using System.Collections;
-using System.Text.RegularExpressions;
-using System.ComponentModel;
-using System.Globalization;
-using System.Reflection;
+﻿using System.Text.RegularExpressions;
 
 namespace PowershellExpectDriver
 {
@@ -90,9 +86,9 @@ namespace PowershellExpectDriver
             public string match = match;
         }
         
-        public ExpectData? Expect(string regexString, int timeout, bool continueOnTimeout, bool EOF)
+        public ExpectData? Expect(string regexString, int timeout, bool continueOnTimeout, bool eof)
         {
-            if (EOF)
+            if (eof)
             {
                 Exit();
                 return null;
@@ -139,6 +135,8 @@ namespace PowershellExpectDriver
                     {
                         Exit();
                         Environment.Exit(1);
+                        // TODO: Fix unreachable exception and ensure stack trace works
+                        throw new Exception(timeoutMessage);
                     }
                     break;
                 }
@@ -149,6 +147,12 @@ namespace PowershellExpectDriver
 
             return null;
         }
+        
+        // TODO
+        /*public void ShowTerminal()
+        {
+            pty.ShowTerminal();
+        }*/
         
         private void Exit()
         {

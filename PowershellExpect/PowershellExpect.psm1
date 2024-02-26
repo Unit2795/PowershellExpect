@@ -32,8 +32,6 @@ function Spawn {
     $ExecutionContext.InvokeCommand.InvokeScript($true, $ScriptBlock, $null, $driver) | Out-Null
 
     if (Test-OutputCaptured) {
-        Write-Host "Output Captured"
-        
         return $driver
     }
 }
@@ -61,6 +59,7 @@ function Send {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
         throw
+        exit
     }
 }
 
@@ -87,7 +86,16 @@ function Expect {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
         throw
+        exit
     }
+}
+
+function ShowTerminal {
+    param(
+        [switch]$Interactive = $false
+    )
+    
+    $driver.ShowTerminal($Interactive)
 }
 
 Export-ModuleMember -Function Spawn, Send, Expect

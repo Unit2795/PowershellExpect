@@ -89,16 +89,10 @@ namespace PowershellExpectDriver
         }
     }
     
-    internal sealed class Process : IDisposable
+    internal sealed class Process(STARTUPINFOEX startupInfo, PROCESS_INFORMATION processInfo) : IDisposable
     {
-        public Process(STARTUPINFOEX startupInfo, PROCESS_INFORMATION processInfo)
-        {
-            StartupInfo = startupInfo;
-            ProcessInfo = processInfo;
-        }
-
-        public STARTUPINFOEX StartupInfo { get; }
-        public PROCESS_INFORMATION ProcessInfo { get; }
+        public STARTUPINFOEX StartupInfo { get; } = startupInfo;
+        public PROCESS_INFORMATION ProcessInfo { get; } = processInfo;
 
         #region IDisposable Support
 
