@@ -46,13 +46,19 @@ namespace PowershellExpectDriver
         internal static extern bool SetConsoleCtrlHandler(ConsoleEventDelegate callback, bool add);
         
         [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool WriteConsoleOutput(
+        internal static extern bool WriteConsole(
             IntPtr hConsoleOutput, 
-            CHAR_INFO[] lpBuffer, 
-            COORD dwBufferSize, 
-            COORD dwBufferCoord, 
-            ref SMALL_RECT lpWriteRegion
+            string lpBuffer, 
+            uint nNumberOfCharsToWrite, 
+            out uint lpNumberOfCharsWritten, 
+            IntPtr lpReserved
         );
+        
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool AttachConsole(uint dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool FreeConsole();
         
         
         // PTY P/Invoke native constants

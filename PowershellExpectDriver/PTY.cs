@@ -6,6 +6,30 @@ using static PowershellExpectDriver.PInvoke;
 
 namespace PowershellExpectDriver
 {
+    public class PipeServer
+    {
+        public void InitPipe()
+        {
+            Task.Run(() => PipeClient()); // Run the listening loop in a separate task
+        }
+        
+        private async Task PipeClient()
+        {
+            var pipeClient = new NamedPipeClientStream(".", "observer", PipeDirection.In);
+            await pipeClient.ConnectAsync();
+            var terminalOutput = Console.OpenStandardOutput();
+            
+            var buffer = new byte[4096];
+            int bytesRead;
+
+            // Read from the pipe and write directly to the terminal output
+            while ((bytesRead = pipeClient.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                await terminalOutput.WriteAsync(buffer, 0, bytesRead);
+            }
+        }
+    }
+    
     public class PTY
     {
         public event EventHandler<string> OutputReceived;
@@ -15,9 +39,8 @@ namespace PowershellExpectDriver
         private PTYHandler? ptyProcess;
         private Process? pwshProcess;
         private System.Diagnostics.Process observerProcess;
-        private System.IO.Pipes.NamedPipeClientStream? pipeClient;
+        private System.IO.Pipes.NamedPipeServerStream? pipeServer;
         private StreamWriter? pipeWriter;
-        private string vtlog = "";
 
         /*public PTY()
         {
@@ -28,9 +51,9 @@ namespace PowershellExpectDriver
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
-            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 50);
+            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 1200, 300);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, workingDirectory);
-            
+
             CreateObserver();
             
             Task.Run(() => CopyPipeToOutput(outputPipe.ReadSide));
@@ -71,25 +94,21 @@ namespace PowershellExpectDriver
         public void CreateObserver()
         {
             observerProcess = new System.Diagnostics.Process();
-            
-            string scriptContent = @"
-                # In the observer PowerShell window
-                $pipeName = 'observer'
-                $pipe = new-object System.IO.Pipes.NamedPipeServerStream($pipeName, [System.IO.Pipes.PipeDirection]::In)
-                $pipe.WaitForConnection()
 
-                $reader = New-Object System.IO.StreamReader($pipe)
+            string scriptContent = @"
+                Import-Module 'C:\Repositories\PowershellExpect\PowershellExpect\PowershellExpectDriver.dll'
+
+                [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
                 
-                while ($true) {
-                    $line = $reader.Readline()
-                    if ($line -ne $null) {
-                        Write-Host $line -NoNewline
-                    }
-                }
+                $pipeServer = New-Object PowershellExpectDriver.PipeServer
+
+                Clear-Host
+                
+                $pipeServer.InitPipe();
             ";
             
             observerProcess.StartInfo.FileName = "pwsh.exe";
-            observerProcess.StartInfo.Arguments = $"-ExecutionPolicy Bypass -Command {scriptContent}";
+            observerProcess.StartInfo.Arguments = $"-NoExit -ExecutionPolicy Bypass -Command {scriptContent}";
             observerProcess.StartInfo.UseShellExecute = true;
             observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             observerProcess.StartInfo.CreateNoWindow = false;
@@ -97,9 +116,9 @@ namespace PowershellExpectDriver
             observerProcess.Start();
             
             string pipeName = "observer";
-            pipeClient = new NamedPipeClientStream(".", pipeName, PipeDirection.Out);
-            pipeClient.Connect(30000);
-            pipeWriter = new StreamWriter(pipeClient);
+            pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            pipeServer.WaitForConnection();
+            pipeWriter = new StreamWriter(pipeServer);
             pipeWriter.AutoFlush = true;
         }
         
@@ -112,10 +131,11 @@ namespace PowershellExpectDriver
 
             var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read);
             
-            while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, bufferLength)) > 0) 
+            while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, bufferLength)) > 0)
             {
+                await pipeServer.WriteAsync(buffer, 0, bytesRead);
+                
                 string outputChunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                pipeWriter.WriteAsync(outputChunk);
                 OnOutputReceived(outputChunk);
             }
         }
@@ -134,7 +154,7 @@ namespace PowershellExpectDriver
                 throw new InvalidOperationException("Could not get console mode");
             }
 
-            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING ;
+            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
             if (!SetConsoleMode(hStdOut, outConsoleMode))
             {
                 throw new InvalidOperationException("Could not enable virtual terminal processing");

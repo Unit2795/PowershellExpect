@@ -1,10 +1,10 @@
 # Import primary driver DLL
-$driverDLL = Join-Path $PSScriptRoot "PowershellExpectDriver.dll"
-Add-Type -Path $driverDLL
+$driverDLLPath = Join-Path $PSScriptRoot "PowershellExpectDriver.dll"
+Add-Type -Path $driverDLLPath
 
 # Import helper functions
-$helpers = Join-Path $PSScriptRoot "Helpers.ps1"
-. $helpers
+$helpersPath = Join-Path $PSScriptRoot "Helpers.ps1"
+. $helpersPath
 
 function Spawn {
     param(
@@ -20,7 +20,7 @@ function Spawn {
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 
-        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null
+        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null    
 
         $driver = $pty
     }
@@ -95,7 +95,7 @@ function ShowTerminal {
         [switch]$Interactive = $false
     )
     
-    $driver.ShowTerminal($Interactive)
+    $driver.ShowTerminal($Interactive, $driverDLLPath) | Out-Null
 }
 
-Export-ModuleMember -Function Spawn, Send, Expect
+Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal

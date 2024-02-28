@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.IO.Pipes;
+using System.Text.RegularExpressions;
 
 namespace PowershellExpectDriver
 {
@@ -149,10 +150,35 @@ namespace PowershellExpectDriver
         }
         
         // TODO
-        /*public void ShowTerminal()
+        public void ShowTerminal(bool interactive, string dllPath)
         {
-            pty.ShowTerminal();
-        }*/
+            Console.WriteLine(dllPath);
+            /*pty.ShowTerminal();*/
+        }
+
+        public void AttachPipe()
+        {
+            var server = new NamedPipeServerStream("observer", PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            server.WaitForConnection();
+            using (var sr = new StreamReader(server))
+            {
+                while (true)
+                {
+                    if (server.IsConnected)
+                    {
+                        string message = sr.ReadLine();
+                        if (message != null)
+                        {
+                            Console.WriteLine(message);
+                        }
+                    }
+                    else
+                    {
+                        Thread.Sleep(1000); // Wait a bit before trying again
+                    }
+                }
+            }
+        }
         
         private void Exit()
         {
