@@ -51,7 +51,7 @@ Info-Message "Cleaning Complete" Cyan
 Remove-Item -Path "../PowershellExpect/PowershellExpectDriver.dll" -Force
 Info-Message "Deleted PowershellExpect driver DLL" Green
 
-dotnet build --no-restore --configuration Release
+dotnet publish --no-restore --configuration Release
 Info-Message "Rebuild Complete" Blue
 
 Info-Message "Cleaning and build complete" Yellow

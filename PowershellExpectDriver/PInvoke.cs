@@ -60,6 +60,18 @@ namespace PowershellExpectDriver
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern bool FreeConsole();
         
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        internal const int GWL_STYLE = -16;
+        internal const int WS_THICKFRAME = 0x00040000;
+        
         
         // PTY P/Invoke native constants
         internal const uint PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016;

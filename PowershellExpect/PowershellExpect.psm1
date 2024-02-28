@@ -1,5 +1,5 @@
 # Import primary driver DLL
-$driverDLLPath = Join-Path $PSScriptRoot "PowershellExpectDriver.dll"
+$driverDLLPath = Join-Path $PSScriptRoot "/PowershellExpectDriver.dll"
 Add-Type -Path $driverDLLPath
 
 # Import helper functions

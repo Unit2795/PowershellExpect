@@ -2,6 +2,8 @@
 using System.Text;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using static PowershellExpectDriver.PInvoke;
 
 namespace PowershellExpectDriver
@@ -10,7 +12,7 @@ namespace PowershellExpectDriver
     {
         public void InitPipe()
         {
-            Task.Run(() => PipeClient()); // Run the listening loop in a separate task
+            Task.Run(() => PipeClient());
         }
         
         private async Task PipeClient()
@@ -21,8 +23,6 @@ namespace PowershellExpectDriver
             
             var buffer = new byte[4096];
             int bytesRead;
-
-            // Read from the pipe and write directly to the terminal output
             while ((bytesRead = pipeClient.Read(buffer, 0, buffer.Length)) > 0)
             {
                 await terminalOutput.WriteAsync(buffer, 0, bytesRead);
@@ -51,7 +51,7 @@ namespace PowershellExpectDriver
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
-            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 1200, 300);
+            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 30);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, workingDirectory);
 
             CreateObserver();
@@ -90,21 +90,64 @@ namespace PowershellExpectDriver
             }
             writer.Flush();
         }
+        
+        static string GenerateRandomHash()
+        {
+            using (var rng = new RNGCryptoServiceProvider())
+            {
+                byte[] randomBytes = new byte[32]; // 256 bits
+                rng.GetBytes(randomBytes);
+                return BitConverter.ToString(randomBytes).Replace("-", "").ToLower();
+            }
+        }
+
+        static int GenerateRandomNumber(int min, int max)
+        {
+            using (var rng = new RNGCryptoServiceProvider())
+            {
+                byte[] randomNumber = new byte[4];
+                rng.GetBytes(randomNumber);
+                int value = Math.Abs(BitConverter.ToInt32(randomNumber, 0));
+                return (value % (max - min + 1)) + min;
+            }
+        }
+
+        static long GetCurrentUnixTime()
+        {
+            return ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
+        }
+        
+        static string GenerateUniqueWindowTitle()
+        {
+            return "PowerShellExpect - " + GenerateRandomHash() + GenerateRandomNumber(10000, 99999) + GetCurrentUnixTime();
+        }
 
         public void CreateObserver()
         {
             observerProcess = new System.Diagnostics.Process();
 
-            string scriptContent = @"
+            // Generate a unique window title to identify the observer terminal
+            var windowTitle = GenerateUniqueWindowTitle();
+
+            // Set window size to match PTY, set window title, set output encoding to UTF-8, and initialize the named pipe server
+            string scriptContent = $@"
                 Import-Module 'C:\Repositories\PowershellExpect\PowershellExpect\PowershellExpectDriver.dll'
+
+                function prompt {{ '' }}
+                $Host.UI.RawUI.WindowSize.Height = 30
+                $Host.UI.RawUI.WindowSize.Width = 120
+                $Host.UI.RawUI.BufferSize.Height = 30
+                $Host.UI.RawUI.BufferSize.Width = 120
+
+                $Host.UI.RawUI.WindowTitle = '{windowTitle}'
 
                 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
                 
                 $pipeServer = New-Object PowershellExpectDriver.PipeServer
+                
+                $pipeServer.InitPipe()
 
                 Clear-Host
-                
-                $pipeServer.InitPipe();
             ";
             
             observerProcess.StartInfo.FileName = "pwsh.exe";
@@ -114,7 +157,30 @@ namespace PowershellExpectDriver
             observerProcess.StartInfo.CreateNoWindow = false;
             
             observerProcess.Start();
+
+            // Fetch window handle and set its style (prevent resizing to keep in sync with the PTY window size)
+            var timeout = 10;
+            var stopwatch = Stopwatch.StartNew();
+            IntPtr hWnd = IntPtr.Zero;
+            while (stopwatch.Elapsed.TotalSeconds < timeout)
+            {
+                hWnd = FindWindow(null, windowTitle);
+                if (hWnd != IntPtr.Zero)
+                {
+                    int style = GetWindowLong(hWnd, GWL_STYLE);
+                    int newStyle = style & ~WS_THICKFRAME;
+                    SetWindowLong(hWnd, GWL_STYLE, newStyle);
+                    break;
+                }
+
+                Thread.Sleep(500);
+            }
+            if (hWnd == IntPtr.Zero)
+            {
+                throw new Exception("Could not find observer terminal to set its style");
+            }
             
+            // Create a named pipe server to send PTY output to the observer terminal
             string pipeName = "observer";
             pipeServer = new NamedPipeServerStream(pipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             pipeServer.WaitForConnection();
