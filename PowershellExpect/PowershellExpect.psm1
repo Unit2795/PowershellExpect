@@ -95,7 +95,7 @@ function ShowTerminal {
         [switch]$Interactive = $false
     )
     
-    $driver.ShowTerminal($Interactive, $driverDLLPath) | Out-Null
+    $driver.ShowTerminal($driverDLLPath)
 }
 
 Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal

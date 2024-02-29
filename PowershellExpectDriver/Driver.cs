@@ -150,10 +150,10 @@ namespace PowershellExpectDriver
         }
         
         // TODO
-        public void ShowTerminal(bool interactive, string dllPath)
+        public void ShowTerminal(string dllPath)
         {
             Console.WriteLine(dllPath);
-            /*pty.ShowTerminal();*/
+            /*pty.CreateObserver(dllPath);*/
         }
 
         public void AttachPipe()
