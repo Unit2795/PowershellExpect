@@ -62,6 +62,9 @@ namespace PowershellExpectDriver
         
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
+        
+        [DllImport("user32.dll")]
+        internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);

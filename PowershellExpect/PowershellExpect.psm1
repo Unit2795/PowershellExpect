@@ -95,7 +95,11 @@ function ShowTerminal {
         [switch]$Interactive = $false
     )
     
-    $driver.ShowTerminal($driverDLLPath)
+    $driver.ShowTerminal()
 }
 
-Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal
+function HideTerminal {
+    $driver.HideTerminal()
+}
+
+Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal, HideTerminal

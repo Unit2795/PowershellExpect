@@ -15,16 +15,14 @@ namespace PowershellExpectDriver
         private PTYPipe? outputPipe;
         private PTYHandler? ptyProcess;
         private Process? pwshProcess;
-        private StringBuilder output = new();
-        private Logger logger = new();
-        
-        private bool hasObserver;
+
         private System.Diagnostics.Process? observerProcess;
         private string observerId = "";
         private string observerOutputPipeName = "output";
         private string observerInputPipeName = "input";
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
+        private IntPtr observerHandle = IntPtr.Zero;
 
         public void Run()
         {
@@ -97,6 +95,16 @@ namespace PowershellExpectDriver
         {
             return "PowerShellExpect-" + GenerateRandomHash() + GenerateRandomNumber();
         }
+        
+        public void ShowObserver()
+        {
+            ShowWindow(observerHandle, 5);
+        }
+        
+        public void HideObserver()
+        {
+            ShowWindow(observerHandle, 0);
+        }
 
         public void CreateObserver(string dllPath)
         {
@@ -116,9 +124,9 @@ namespace PowershellExpectDriver
                 $Host.UI.RawUI.BufferSize.Height = 30
                 $Host.UI.RawUI.BufferSize.Width = 120
 
-                [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+                $Host.UI.RawUI.WindowTitle = '{observerId}'
 
-                Write-Host '{output}'
+                [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
                 
                 $observer = New-Object PowershellExpectDriver.ObserverTerminal
 
@@ -128,17 +136,37 @@ namespace PowershellExpectDriver
             observerProcess.StartInfo.FileName = "pwsh.exe";
             observerProcess.StartInfo.Arguments = $"-NoExit -ExecutionPolicy Bypass -Command {scriptContent}";
             observerProcess.StartInfo.UseShellExecute = true;
-            observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
+            observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
             observerProcess.StartInfo.CreateNoWindow = false;
             
             observerProcess.Start();
+            
+            // Fetch window handle and set its style (prevent resizing to keep in sync with the PTY window size)
+            var timeout = 10;
+            var stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed.TotalSeconds < timeout)
+            {
+                observerHandle = FindWindow(null, observerId);
+                if (observerHandle != IntPtr.Zero)
+                {
+                    int style = GetWindowLong(observerHandle, GWL_STYLE);
+                    int newStyle = style & ~WS_THICKFRAME;
+                    SetWindowLong(observerHandle, GWL_STYLE, newStyle);
+                    break;
+                }
+
+                Thread.Sleep(500);
+            }
+            if (observerHandle == IntPtr.Zero)
+            {
+                throw new Exception("Could not find observer terminal window handle");
+            }
             
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
             
             Task.Run(ObserverInput);
-            hasObserver = true;
         }
         
         // Read the child process output and write it to an event handler for processing
@@ -152,7 +180,7 @@ namespace PowershellExpectDriver
             
             while ((bytesRead = await pseudoConsoleOutput.ReadAsync(byteBuffer.AsMemory(0, bufferLength))) > 0)
             {
-                if (hasObserver && observerOutput != null)
+                if (observerOutput != null)
                 {
                     await observerOutput.WriteAsync(byteBuffer.AsMemory(0, bytesRead));
                 }
@@ -182,12 +210,9 @@ namespace PowershellExpectDriver
         
         public void DisposeResources()
         {
-            if (hasObserver)
-            {
-                observerOutput?.Close();
-                observerInput?.Close();
-                observerProcess?.Close();
-            }
+            observerOutput?.Close();
+            observerInput?.Close();
+            observerProcess?.Close();
             
             Console.ResetColor();
             
@@ -311,8 +336,6 @@ namespace PowershellExpectDriver
                 ConsoleModifiers.Shift => SHIFT,
                 _ => ""
             };
-
-            Console.WriteLine(keyInfo.KeyChar.ToString());
             
             return keyInfo.Key switch
             {

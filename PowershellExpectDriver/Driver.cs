@@ -31,12 +31,14 @@ namespace PowershellExpectDriver
             {
                 pty.OutputReceived += HandleOutput;
                 
-                if (showTerminal)
-                {
-                    ShowTerminal(dllPath);
-                }
+                pty.CreateObserver(dllPath);
                 
                 pty.Run();
+                
+                if (showTerminal)
+                {
+                    ShowTerminal();
+                }
                 
                 return pty;
             }
@@ -150,10 +152,14 @@ namespace PowershellExpectDriver
             return null;
         }
         
-        // TODO
-        public void ShowTerminal(string dllPath)
+        public void ShowTerminal()
         {
-            pty.CreateObserver(dllPath);
+            pty.ShowObserver();
+        }
+        
+        public void HideTerminal()
+        {
+            pty.HideObserver();
         }
 
         public static void AttachPipe()
