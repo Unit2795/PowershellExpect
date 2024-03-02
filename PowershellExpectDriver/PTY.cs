@@ -1,9 +1,7 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.Win32.SafeHandles;
+﻿using Microsoft.Win32.SafeHandles;
 using System.Text;
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using static PowershellExpectDriver.PInvoke;
 
@@ -11,14 +9,16 @@ namespace PowershellExpectDriver
 {
     public class PTY
     {
-        public event EventHandler<string> OutputReceived;
+        public event EventHandler<string>? OutputReceived;
         
         private PTYPipe? inputPipe;
         private PTYPipe? outputPipe;
         private PTYHandler? ptyProcess;
         private Process? pwshProcess;
+        private StringBuilder output = new();
+        private Logger logger = new();
         
-        private bool hasObserver = false;
+        private bool hasObserver;
         private System.Diagnostics.Process? observerProcess;
         private string observerId = "";
         private string observerOutputPipeName = "output";
@@ -26,22 +26,14 @@ namespace PowershellExpectDriver
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
 
-        /*public PTY()
-        {
-            EnableVirtualTerminalSequenceProcessing();
-        }*/
-
-        public void Run(string workingDirectory = "/")
+        public void Run()
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
             ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 30);
-            pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, workingDirectory);
-
-            CreateObserver();
+            pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle);
             
             Task.Run(() => CopyPipeToOutput(outputPipe.ReadSide));
-            Task.Run(ObserverInput);
             
             // Free resources if case the console is ungracefully closed (e.g. by the 'x' in the window titlebar or CTRL+C)
             OnClose(DisposeResources);
@@ -64,15 +56,14 @@ namespace PowershellExpectDriver
         public async void ObserverInput()
         {
             const int bufferLength = 4096;
-            var buffer = new byte[bufferLength];
+            var byteBuffer = new byte[bufferLength];
             int bytesRead;
             observerInput = new NamedPipeServerStream(observerInputPipeName, PipeDirection.In);
 
             await observerInput.WaitForConnectionAsync();
-            while ((bytesRead = await observerInput.ReadAsync(buffer, 0, bufferLength)) > 0)
+            while ((bytesRead = await observerInput.ReadAsync(byteBuffer, 0, bufferLength)) > 0)
             {
-                string outputChunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                Console.WriteLine(outputChunk);
+                string outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
                 CopyInputToPipe(outputChunk, true);
             }
         }
@@ -94,36 +85,20 @@ namespace PowershellExpectDriver
         
         static string GenerateRandomHash()
         {
-            using (var rng = new RNGCryptoServiceProvider())
-            {
-                byte[] randomBytes = new byte[32]; // 256 bits
-                rng.GetBytes(randomBytes);
-                return BitConverter.ToString(randomBytes).Replace("-", "").ToLower();
-            }
+            return Guid.NewGuid().ToString();
         }
 
-        static int GenerateRandomNumber(int min, int max)
+        static int GenerateRandomNumber()
         {
-            using (var rng = new RNGCryptoServiceProvider())
-            {
-                byte[] randomNumber = new byte[4];
-                rng.GetBytes(randomNumber);
-                int value = Math.Abs(BitConverter.ToInt32(randomNumber, 0));
-                return (value % (max - min + 1)) + min;
-            }
-        }
-
-        static long GetCurrentUnixTime()
-        {
-            return ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
+            return RandomNumberGenerator.GetInt32(100000);
         }
         
         static string GenerateUniqueWindowTitle()
         {
-            return "PowerShellExpect-" + GenerateRandomHash() + GenerateRandomNumber(10000, 99999) + GetCurrentUnixTime();
+            return "PowerShellExpect-" + GenerateRandomHash() + GenerateRandomNumber();
         }
 
-        public void CreateObserver()
+        public void CreateObserver(string dllPath)
         {
             observerProcess = new System.Diagnostics.Process();
 
@@ -134,23 +109,20 @@ namespace PowershellExpectDriver
 
             // Set window size to match PTY, set window title, set output encoding to UTF-8, and initialize the named pipe server
             string scriptContent = $@"
-                Import-Module 'C:\Repositories\PowershellExpect\PowershellExpect\PowershellExpectDriver.dll'
-
+                Import-Module '{dllPath}'
                 
                 $Host.UI.RawUI.WindowSize.Height = 30
                 $Host.UI.RawUI.WindowSize.Width = 120
                 $Host.UI.RawUI.BufferSize.Height = 30
                 $Host.UI.RawUI.BufferSize.Width = 120
 
-                $Host.UI.RawUI.WindowTitle = '{observerId}'
-
                 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+                Write-Host '{output}'
                 
                 $observer = New-Object PowershellExpectDriver.ObserverTerminal
-                
-                $observer.Initialize('{observerOutputPipeName}', '{observerInputPipeName}')
 
-                Clear-Host
+                $observer.Initialize('{observerOutputPipeName}', '{observerInputPipeName}')
             ";
             
             observerProcess.StartInfo.FileName = "pwsh.exe";
@@ -160,48 +132,32 @@ namespace PowershellExpectDriver
             observerProcess.StartInfo.CreateNoWindow = false;
             
             observerProcess.Start();
-
-            // Fetch window handle and set its style (prevent resizing to keep in sync with the PTY window size)
-            var timeout = 10;
-            var stopwatch = Stopwatch.StartNew();
-            IntPtr hWnd = IntPtr.Zero;
-            while (stopwatch.Elapsed.TotalSeconds < timeout)
-            {
-                hWnd = FindWindow(null, observerId);
-                if (hWnd != IntPtr.Zero)
-                {
-                    int style = GetWindowLong(hWnd, GWL_STYLE);
-                    int newStyle = style & ~WS_THICKFRAME;
-                    SetWindowLong(hWnd, GWL_STYLE, newStyle);
-                    break;
-                }
-
-                Thread.Sleep(500);
-            }
-            if (hWnd == IntPtr.Zero)
-            {
-                throw new Exception("Could not find observer terminal to set its style");
-            }
             
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
+            
+            Task.Run(ObserverInput);
+            hasObserver = true;
         }
         
         // Read the child process output and write it to an event handler for processing
         private async Task CopyPipeToOutput(SafeFileHandle outputReadSide)
         {
             const int bufferLength = 4096;
-            var buffer = new byte[bufferLength];
+            var byteBuffer = new byte[bufferLength];
             int bytesRead;
 
             var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read);
             
-            while ((bytesRead = await pseudoConsoleOutput.ReadAsync(buffer, 0, bufferLength)) > 0)
+            while ((bytesRead = await pseudoConsoleOutput.ReadAsync(byteBuffer.AsMemory(0, bufferLength))) > 0)
             {
-                await observerOutput.WriteAsync(buffer, 0, bytesRead);
+                if (hasObserver && observerOutput != null)
+                {
+                    await observerOutput.WriteAsync(byteBuffer.AsMemory(0, bytesRead));
+                }
                 
-                string outputChunk = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                string outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
                 OnOutputReceived(outputChunk);
             }
         }
@@ -209,22 +165,7 @@ namespace PowershellExpectDriver
         protected virtual void OnOutputReceived(string outputChunk)
         {
             var handler = OutputReceived;
-            OutputReceived?.Invoke(this, outputChunk);
-        }
-        
-        private static void EnableVirtualTerminalSequenceProcessing()
-        {
-            var hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-            if (!GetConsoleMode(hStdOut, out uint outConsoleMode))
-            {
-                throw new InvalidOperationException("Could not get console mode");
-            }
-
-            outConsoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN;
-            if (!SetConsoleMode(hStdOut, outConsoleMode))
-            {
-                throw new InvalidOperationException("Could not enable virtual terminal processing");
-            }
+            handler?.Invoke(this, outputChunk);
         }
         
         private static void OnClose(Action handler)
@@ -279,13 +220,11 @@ namespace PowershellExpectDriver
 
         #region IDisposable
 
-        void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
-            if (disposing)
-            {
-                ReadSide?.Dispose();
-                WriteSide?.Dispose();
-            }
+            if (!disposing) return;
+            ReadSide.Dispose();
+            WriteSide.Dispose();
         }
 
         public void Dispose()
@@ -297,7 +236,7 @@ namespace PowershellExpectDriver
         #endregion
     }
     
-    internal sealed class PTYHandler : IDisposable
+    internal sealed class PTYHandler : IDisposable 
     {
         public static readonly IntPtr PseudoConsoleThreadAttribute = (IntPtr)PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE;
 
@@ -337,7 +276,18 @@ namespace PowershellExpectDriver
     {
         private string observerOutputPipeName = "output";
         private string observerInputPipeName = "input";
+        
+        // VT sequence constants
         private const string CSI = "\x1B[";
+        private const string ESC = "\x1B";
+        private const string SHIFT = "1;2"; 
+        private const string ALT = "1;3"; 
+        private const string SHIFT_ALT = "1;4"; 
+        private const string CTRL = "1;5";
+        private const string SHIFT_CTRL = "1;6";
+        private const string ALT_CTRL = "1;7";
+        private const string SHIFT_ALT_CTRL = "1;8";
+        
         
         public void Initialize(string outputPipeName, string inputPipeName)
         {
@@ -350,76 +300,58 @@ namespace PowershellExpectDriver
         
         private string TranslateKeyToVTSequence(ConsoleKeyInfo keyInfo)
         {
-            switch (keyInfo.Key)
+            var modifier = keyInfo.Modifiers switch
             {
-                // Modifier + arrow keys for terminals that support it
-                case ConsoleKey.UpArrow when keyInfo.Modifiers == ConsoleModifiers.Shift:
-                    return "`e[1;2A";
-                case ConsoleKey.DownArrow when keyInfo.Modifiers == ConsoleModifiers.Shift:
-                    return "`e[1;2B";
-                case ConsoleKey.RightArrow when keyInfo.Modifiers == ConsoleModifiers.Shift:
-                    return "`e[1;2C";
-                case ConsoleKey.LeftArrow when keyInfo.Modifiers == ConsoleModifiers.Shift:
-                    return "`e[1;2D";
-                case ConsoleKey.UpArrow:
-                    return CSI + "A";
-                case ConsoleKey.DownArrow:
-                    return CSI + "B";
-                case ConsoleKey.RightArrow:
-                    return CSI + "C";
-                case ConsoleKey.LeftArrow:
-                    return CSI + "D";
-                case ConsoleKey.Home:
-                    return "`e[H";
-                case ConsoleKey.End:
-                    return "`e[F";
-                case ConsoleKey.PageUp:
-                    return "`e[5~";
-                case ConsoleKey.PageDown:
-                    return "`e[6~";
-                case ConsoleKey.Insert:
-                    return "`e[2~";
-                case ConsoleKey.Delete:
-                    return "`e[3~";
-                case ConsoleKey.F1:
-                    return "`eOP";
-                case ConsoleKey.F2:
-                    return "`eOQ";
-                case ConsoleKey.F3:
-                    return "`eOR";
-                case ConsoleKey.F4:
-                    return "`eOS";
-                case ConsoleKey.F5:
-                    return "`e[15~";
-                case ConsoleKey.F6:
-                    return "`e[17~";
-                case ConsoleKey.F7:
-                    return "`e[18~";
-                case ConsoleKey.F8:
-                    return "`e[19~";
-                case ConsoleKey.F9:
-                    return "`e[20~";
-                case ConsoleKey.F10:
-                    return "`e[21~";
-                case ConsoleKey.F11:
-                    return "`e[23~";
-                case ConsoleKey.F12:
-                    return "`e[24~";
-                case ConsoleKey.Escape:
-                    return "`e";
-                case ConsoleKey.Enter:
-                    return "\x0d"; // Carriage return
-                case ConsoleKey.Tab:
-                    return "\x09"; // Horizontal tab
-                case ConsoleKey.Backspace:
-                    return "\x7f"; // DEL character (often used as backspace)
-                default:
-                    return keyInfo.KeyChar.ToString();
-            }
+                ConsoleModifiers.Alt | ConsoleModifiers.Control => ALT_CTRL,
+                ConsoleModifiers.Shift | ConsoleModifiers.Control => SHIFT_CTRL,
+                ConsoleModifiers.Shift | ConsoleModifiers.Alt => SHIFT_ALT,
+                ConsoleModifiers.Shift | ConsoleModifiers.Alt | ConsoleModifiers.Control => SHIFT_ALT_CTRL,
+                ConsoleModifiers.Control => CTRL,
+                ConsoleModifiers.Alt => ALT,
+                ConsoleModifiers.Shift => SHIFT,
+                _ => ""
+            };
+
+            Console.WriteLine(keyInfo.KeyChar.ToString());
+            
+            return keyInfo.Key switch
+            {
+                ConsoleKey.UpArrow => CSI + modifier + "A",
+                ConsoleKey.DownArrow => CSI + modifier + "B",
+                ConsoleKey.RightArrow => CSI + modifier + "C",
+                ConsoleKey.LeftArrow => CSI + modifier + "D",
+                
+                ConsoleKey.Home => CSI + modifier + "H",
+                ConsoleKey.End => CSI + modifier + "F",
+                ConsoleKey.PageUp => CSI + modifier + "5~",
+                ConsoleKey.PageDown => CSI + modifier + "6~",
+                ConsoleKey.Insert => CSI + modifier + "2~",
+                ConsoleKey.Delete => CSI + modifier + "3~",
+                
+                ConsoleKey.F1 => ESC + "OP",
+                ConsoleKey.F2 => ESC + "OQ",
+                ConsoleKey.F3 => ESC + "OR",
+                ConsoleKey.F4 => ESC + "OS",
+                ConsoleKey.F5 => CSI + "15~",
+                ConsoleKey.F6 => CSI + "17~",
+                ConsoleKey.F7 => CSI + "18~",
+                ConsoleKey.F8 => CSI + "19~",
+                ConsoleKey.F9 => CSI + "20~",
+                ConsoleKey.F10 => CSI + "21~",
+                ConsoleKey.F11 => CSI + "23~",
+                ConsoleKey.F12 => CSI + "24~",
+                
+                ConsoleKey.Escape => "\x1b",
+                ConsoleKey.Enter => "\x0d",
+                ConsoleKey.Tab => "\x09",
+                ConsoleKey.Backspace => "\x7f",
+                
+                _ => keyInfo.KeyChar.ToString()
+            };
         }
 
         // Intercepts input from the observer terminal and sends it to the PTY
-        private Task InputInterceptor()
+        private void InputInterceptor()
         {
             var pipeClient = new NamedPipeClientStream(".", observerInputPipeName, PipeDirection.Out);
             pipeClient.Connect();

@@ -61,7 +61,7 @@ namespace PowershellExpectDriver
         internal static extern bool FreeConsole();
         
         [DllImport("user32.dll", SetLastError = true)]
-        internal static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        internal static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
 
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -184,13 +184,13 @@ namespace PowershellExpectDriver
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool CreateProcess(
-            string lpApplicationName, 
+            string? lpApplicationName, 
             string lpCommandLine, 
             ref SECURITY_ATTRIBUTES lpProcessAttributes,
             ref SECURITY_ATTRIBUTES lpThreadAttributes, 
             bool bInheritHandles, uint dwCreationFlags,
             IntPtr lpEnvironment, 
-            string lpCurrentDirectory, 
+            string? lpCurrentDirectory, 
             [In] ref STARTUPINFOEX lpStartupInfo,
             out PROCESS_INFORMATION lpProcessInformation
         );

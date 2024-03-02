@@ -8,10 +8,10 @@ namespace PowershellExpectDriver
         /// <summary>
         /// Start and configure a process. The return value represents the process and should be disposed.
         /// </summary>
-        internal static Process Start(IntPtr attributes, IntPtr hPC, string workingDirectory = "/")
+        internal static Process Start(IntPtr attributes, IntPtr hPC)
         {
             var startupInfo = ConfigureProcessThread(hPC, attributes);
-            var processInfo = RunProcess(ref startupInfo, workingDirectory);
+            var processInfo = RunProcess(ref startupInfo);
             return new Process(startupInfo, processInfo);
         }
 
@@ -51,7 +51,7 @@ namespace PowershellExpectDriver
                 dwFlags: 0,
                 attribute: attributes,
                 lpValue: hPC,
-                cbSize: (IntPtr)IntPtr.Size,
+                cbSize: IntPtr.Size,
                 lpPreviousValue: IntPtr.Zero,
                 lpReturnSize: IntPtr.Zero
             );
@@ -63,7 +63,7 @@ namespace PowershellExpectDriver
             return startupInfo;
         }
 
-        private static PROCESS_INFORMATION RunProcess(ref STARTUPINFOEX sInfoEx, string workingDirectory = "/")
+        private static PROCESS_INFORMATION RunProcess(ref STARTUPINFOEX sInfoEx)
         {
             int securityAttributeSize = Marshal.SizeOf<SECURITY_ATTRIBUTES>();
             var pSec = new SECURITY_ATTRIBUTES { nLength = securityAttributeSize };
@@ -91,12 +91,12 @@ namespace PowershellExpectDriver
     
     internal sealed class Process(STARTUPINFOEX startupInfo, PROCESS_INFORMATION processInfo) : IDisposable
     {
-        public STARTUPINFOEX StartupInfo { get; } = startupInfo;
+        private STARTUPINFOEX StartupInfo { get; } = startupInfo;
         public PROCESS_INFORMATION ProcessInfo { get; } = processInfo;
 
         #region IDisposable Support
 
-        private bool disposedValue = false; // To detect redundant calls
+        private bool disposedValue; // To detect redundant calls
 
         void Dispose(bool disposing)
         {

@@ -20,7 +20,7 @@ function Spawn {
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 
-        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null    
+        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal, $driverDLLPath) | Out-Null    
 
         $driver = $pty
     }

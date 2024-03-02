@@ -5,15 +5,15 @@ namespace PowershellExpectDriver
 {
     public class Driver
     {
-        private PTY pty = new PTY();
+        private readonly PTY pty = new PTY();
         // Global timeout set by the spawn command
-        private int timeoutSeconds = 0;
+        private int timeoutSeconds;
         // Whether logging has been enabled or not
-        private bool loggingEnabled = false;
+        private bool loggingEnabled;
         // Buffer that contains the output of the process
-        private string output = "";
+        private readonly CircularBuffer buffer = new();
         
-        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal)
+        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal, string dllPath)
         {
             Console.ForegroundColor = ConsoleColor.Blue;
             if (timeout > 0)
@@ -31,7 +31,12 @@ namespace PowershellExpectDriver
             {
                 pty.OutputReceived += HandleOutput;
                 
-                pty.Run(workingDirectory);
+                if (showTerminal)
+                {
+                    ShowTerminal(dllPath);
+                }
+                
+                pty.Run();
                 
                 return pty;
             }
@@ -51,7 +56,10 @@ namespace PowershellExpectDriver
             // Capture the initial timestamp
             var startTime = DateTimeOffset.Now;
             var endTime = startTime.AddSeconds(idleDuration);
-            var idleOutput = output; 
+            var idleOutput = new CircularBuffer
+            {
+                Data = buffer.Data
+            };
 
             // Loop until the idle duration expires
             while (DateTimeOffset.Now < endTime)
@@ -59,26 +67,24 @@ namespace PowershellExpectDriver
                 Thread.Sleep(200);
 
                 // If there is new output, append it to the idle output and reset the timer
-                if (output.Length > 0)
-                {
-                    startTime = DateTimeOffset.Now;
-                    endTime = startTime.AddSeconds(idleDuration);
+                if (buffer.Data.Length <= 0) continue;
+                startTime = DateTimeOffset.Now;
+                endTime = startTime.AddSeconds(idleDuration);
                     
-                    // Append any new output and clear the buffer
-                    idleOutput += output;
-                    output = "";
-                }
+                // Append any new output and clear the buffer
+                idleOutput.Data = buffer.Data;
+                buffer.Clear();
             }
 
             if (ignoreLines > 0)
             {
                 // Split the string into lines, remove the requested number of lines from the start, and join them back together
                 // Most useful for removing the command echo from the output
-                idleOutput = string.Join("\n", idleOutput.Split('\n').Skip(ignoreLines));
+                idleOutput.Data = string.Join("\n", idleOutput.Data.Split('\n').Skip(ignoreLines));
             }
 
             // Return the captured output during idle time as a single string
-            return idleOutput;
+            return idleOutput.Data;
         }
         
         public struct ExpectData(string terminalOutput, string match)
@@ -97,8 +103,6 @@ namespace PowershellExpectDriver
             
             // Convert incoming regex string to actual Regex
             Regex regex = new Regex(regexString);
-            // Variable for storing if a match has been received
-            bool matched = false;
             
             // If no timeout is set and a global timeout is set, use the global timeout
             if (timeout == 0 && timeoutSeconds > 0)
@@ -111,7 +115,7 @@ namespace PowershellExpectDriver
             // While no match is found (or no timeout occurs), continue to evaluate output until match is found
             do
             {
-                Match match = regex.Match(output);
+                var match = regex.Match(buffer.Data);
                 if (match.Success)
                 {
                     // Log the match if logging is enabled
@@ -119,18 +123,15 @@ namespace PowershellExpectDriver
                     {
                         InfoMessage("Match found: " + match.Value);
                     }
-
-                    matched = true;
-                    return new ExpectData(output, match.Value);
+                    
+                    return new ExpectData(buffer.Data, match.Value);
                 }
-                // Clear the output to keep the buffer nice and lean
-                output = "";
+                buffer.Clear();
                 
                 // If a timeout is set and we've exceeded the max time, throw timeout error and stop the loop
                 if (timeout > 0 && DateTimeOffset.Now.ToUnixTimeSeconds() >= maxTimestamp)
                 {
-                    string timeoutMessage = String.Format("Timed out waiting for: '{0}'", regexString);
-                    matched = true;
+                    var timeoutMessage = $"Timed out waiting for: '{regexString}'";
                     InfoMessage(timeoutMessage);
                     if (continueOnTimeout != true)
                     {
@@ -144,7 +145,7 @@ namespace PowershellExpectDriver
                 
                 // TODO: Evaluate if this timeout is too much or if we should attempt to evaluate matches as they arrive.
                 Thread.Sleep(500);
-            } while (!matched);
+            } while (true);
 
             return null;
         }
@@ -152,30 +153,27 @@ namespace PowershellExpectDriver
         // TODO
         public void ShowTerminal(string dllPath)
         {
-            Console.WriteLine(dllPath);
-            /*pty.CreateObserver(dllPath);*/
+            pty.CreateObserver(dllPath);
         }
 
-        public void AttachPipe()
+        public static void AttachPipe()
         {
             var server = new NamedPipeServerStream("observer", PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             server.WaitForConnection();
-            using (var sr = new StreamReader(server))
+            var sr = new StreamReader(server);
+            while (true)
             {
-                while (true)
+                if (server.IsConnected)
                 {
-                    if (server.IsConnected)
+                    var message = sr.ReadLine();
+                    if (message != null)
                     {
-                        string message = sr.ReadLine();
-                        if (message != null)
-                        {
-                            Console.WriteLine(message);
-                        }
+                        Console.WriteLine(message);
                     }
-                    else
-                    {
-                        Thread.Sleep(1000); // Wait a bit before trying again
-                    }
+                }
+                else
+                {
+                    Thread.Sleep(1000); // Wait a bit before trying again
                 }
             }
         }
@@ -195,18 +193,7 @@ namespace PowershellExpectDriver
         
         private void HandleOutput(object? sender, string outputBuffer)
         {
-            const int maxLength = 8192;
-            string newOutput = output + outputBuffer;
-            if (newOutput.Length > maxLength)
-            {
-                // Calculate the number of characters to remove from the start of the combined string.
-                int charsToRemove = newOutput.Length - maxLength;
-
-                // Remove the oldest characters from the start of the string to meet the maximum length constraint.
-                newOutput = newOutput.Substring(charsToRemove);
-            }
-            
-            output = newOutput;
+            buffer.Data = outputBuffer;
         }
         
         // Log a message to keep the user appraised of progress
