@@ -15,7 +15,9 @@ namespace PowershellExpectDriver
         private PTYPipe? outputPipe;
         private PTYHandler? ptyProcess;
         private Process? pwshProcess;
-
+        private TerminalBuffer terminalBuffer = new();
+        private bool readPaused = false;
+        
         private System.Diagnostics.Process? observerProcess;
         private string observerId = "";
         private string observerOutputPipeName = "output";
@@ -108,6 +110,10 @@ namespace PowershellExpectDriver
 
         public void CreateObserver(string dllPath)
         {
+            readPaused = true;
+            
+            terminalBuffer.Flush();
+            
             observerProcess = new System.Diagnostics.Process();
 
             // Generate a unique window title to identify the observer terminal
@@ -124,10 +130,10 @@ namespace PowershellExpectDriver
                 $Host.UI.RawUI.BufferSize.Height = 30
                 $Host.UI.RawUI.BufferSize.Width = 120
 
-                $Host.UI.RawUI.WindowTitle = '{observerId}'
-
                 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-                
+
+                Get-Content -Path '{terminalBuffer.Path}' 
+
                 $observer = New-Object PowershellExpectDriver.ObserverTerminal
 
                 $observer.Initialize('{observerOutputPipeName}', '{observerInputPipeName}')
@@ -136,37 +142,22 @@ namespace PowershellExpectDriver
             observerProcess.StartInfo.FileName = "pwsh.exe";
             observerProcess.StartInfo.Arguments = $"-NoExit -ExecutionPolicy Bypass -Command {scriptContent}";
             observerProcess.StartInfo.UseShellExecute = true;
-            observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+            observerProcess.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
             observerProcess.StartInfo.CreateNoWindow = false;
             
             observerProcess.Start();
-            
-            // Fetch window handle and set its style (prevent resizing to keep in sync with the PTY window size)
-            var timeout = 10;
-            var stopwatch = Stopwatch.StartNew();
-            while (stopwatch.Elapsed.TotalSeconds < timeout)
-            {
-                observerHandle = FindWindow(null, observerId);
-                if (observerHandle != IntPtr.Zero)
-                {
-                    int style = GetWindowLong(observerHandle, GWL_STYLE);
-                    int newStyle = style & ~WS_THICKFRAME;
-                    SetWindowLong(observerHandle, GWL_STYLE, newStyle);
-                    break;
-                }
-
-                Thread.Sleep(500);
-            }
-            if (observerHandle == IntPtr.Zero)
-            {
-                throw new Exception("Could not find observer terminal window handle");
-            }
             
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
             
             Task.Run(ObserverInput);
+            
+            // TODO: Instead of using sleep, maybe check to see if output and input pipes are connected, then resume output
+            // Ensure the terminal has time to initialize before resuming output
+            Thread.Sleep(2000);
+            
+            readPaused = false;
         }
         
         // Read the child process output and write it to an event handler for processing
@@ -180,6 +171,13 @@ namespace PowershellExpectDriver
             
             while ((bytesRead = await pseudoConsoleOutput.ReadAsync(byteBuffer.AsMemory(0, bufferLength))) > 0)
             {
+                while (readPaused)
+                {
+                    Thread.Sleep(500);
+                }
+                
+                terminalBuffer.Append(byteBuffer.AsMemory(0, bytesRead));
+                
                 if (observerOutput != null)
                 {
                     await observerOutput.WriteAsync(byteBuffer.AsMemory(0, bytesRead));

@@ -2,6 +2,43 @@
 
 namespace PowershellExpectDriver
 {
+    public class TerminalBuffer
+    {
+        private const ushort ChunkSize = 1024 * 4; // 4KB
+        private const uint BufferSize = 1024 * 128; // 128KB
+        private byte[] byteBuffer = new byte[BufferSize];
+        private int writePosition = 0;
+        public string Path { get; } = System.IO.Path.GetTempFileName();
+
+        public void Append(ReadOnlyMemory<byte> incomingData)
+        {
+            Buffer.BlockCopy(incomingData.ToArray(), 0, byteBuffer, writePosition, incomingData.Length);
+            writePosition += incomingData.Length;
+            
+            // If less than 4KB of buffer is available, flush the buffer to file 
+            if ((BufferSize - writePosition) >= ChunkSize) return;
+            var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);
+            fileStream.Write(byteBuffer, 0, writePosition);
+            fileStream.Flush();
+            fileStream.Close();
+        }
+        
+        public void Flush()
+        {
+            var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);
+            fileStream.Write(byteBuffer, 0 , writePosition);
+            fileStream.Flush();
+            fileStream.Close();
+            writePosition = 0;
+        }
+        
+        public void Clear()
+        {
+            writePosition = 0;
+            File.Delete(Path);
+        }
+    }
+    
     public class Logger
     {
         private readonly string tempFilePath;

@@ -95,7 +95,7 @@ function ShowTerminal {
         [switch]$Interactive = $false
     )
     
-    $driver.ShowTerminal()
+    $driver.ShowTerminal($driverDLLPath)
 }
 
 function HideTerminal {

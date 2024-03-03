@@ -18,12 +18,11 @@ Import-Module $module
 } -ShowTerminal#>
 
 $process = Spawn {
+    ShowTerminal
     Send "node -v"
     Expect "20"
     Send "npm -v"
     Expect "10.*"
-    sleep 5
-    ShowTerminal
     Send "pnpm -v"
     Expect "8\..*"
 } -Timeout 5 -EnableLogging
@@ -32,16 +31,16 @@ $process = Spawn {
     Send "cd C:\Users\david\OneDrive\Desktop\testdir"
     Send "Remove-Item -Path 'C:\Users\david\OneDrive\Desktop\testdir\*' -Recurse -Force"
     Send "pnpm create tauri-app"
-    <#Expect "Project name"
+    Expect "Project name"
     Send "."
     Expect "Package"
     Send "hello-world"
     Expect "Choose which language"
-    Send "`e[A"#>
+    Send "`e[A"
 } $process -Timeout 5 -EnableLogging
 
-<#Spawn {.
+Spawn {
     Expect "Choose your UI"
     Send "`e[A"
     Sleep 5
-} $process -EnableLogging -Timeout 5#>
+} $process -EnableLogging -Timeout 5

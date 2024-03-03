@@ -31,13 +31,11 @@ namespace PowershellExpectDriver
             {
                 pty.OutputReceived += HandleOutput;
                 
-                pty.CreateObserver(dllPath);
-                
                 pty.Run();
                 
                 if (showTerminal)
                 {
-                    ShowTerminal();
+                    ShowTerminal(dllPath);
                 }
                 
                 return pty;
@@ -152,9 +150,9 @@ namespace PowershellExpectDriver
             return null;
         }
         
-        public void ShowTerminal()
+        public void ShowTerminal(string dllPath)
         {
-            pty.ShowObserver();
+            pty.CreateObserver(dllPath);
         }
         
         public void HideTerminal()
