@@ -6,9 +6,10 @@ Add-Type -Path $driverDLLPath
 $helpersPath = Join-Path $PSScriptRoot "Helpers.ps1"
 . $helpersPath
 
+$script:activeProcess = $null
+
 function Spawn {
     param(
-        [ScriptBlock]$ScriptBlock,
         $Process,
         [int]$Timeout = 0,
         [switch]$EnableLogging = $false,
@@ -20,19 +21,17 @@ function Spawn {
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 
-        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal, $driverDLLPath) | Out-Null    
+        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null
 
-        $driver = $pty
+        $script:activeProcess = $pty
     }
     else 
     {
-        $driver = $Process
+        $script:activeProcess = $Process
     }
 
-    $ExecutionContext.InvokeCommand.InvokeScript($true, $ScriptBlock, $null, $driver) | Out-Null
-
     if (Test-OutputCaptured) {
-        return $driver
+        return $script:activeProcess
     }
 }
 
@@ -46,7 +45,7 @@ function Send {
 
     try
     {
-        $result = $driver.Send($Command, $NoNewline, $IdleDuration, $IgnoreLines)
+        $result = $script:activeProcess.Send($Command, $NoNewline, $IdleDuration, $IgnoreLines)
         
         if ($null -ne $result) {
             $isCaptured = Test-OutputCaptured
@@ -73,7 +72,7 @@ function Expect {
 
     try
     {
-        $result = $driver.Expect($Regex, $Timeout, $ContinueOnTimeout, $EOF)
+        $result = $script:activeProcess.Expect($Regex, $Timeout, $ContinueOnTimeout, $EOF)
         
         if ($null -ne $result) {
             $isCaptured = Test-OutputCaptured
@@ -94,12 +93,11 @@ function ShowTerminal {
     param(
         [switch]$Interactive = $false
     )
-    
-    $driver.ShowTerminal($driverDLLPath)
+    $script:activeProcess.ShowTerminal()
 }
 
 function HideTerminal {
-    $driver.HideTerminal()
+    $script:activeProcess.HideTerminal()
 }
 
 Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal, HideTerminal

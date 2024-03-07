@@ -1,4 +1,4 @@
-﻿using System.IO.Pipes;
+using System.IO.Pipes;
 using System.Text.RegularExpressions;
 
 namespace PowershellExpectDriver
@@ -13,7 +13,7 @@ namespace PowershellExpectDriver
         // Buffer that contains the output of the process
         private readonly CircularBuffer buffer = new();
         
-        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal, string dllPath)
+        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal)
         {
             Console.ForegroundColor = ConsoleColor.Blue;
             if (timeout > 0)
@@ -29,13 +29,13 @@ namespace PowershellExpectDriver
             
             try
             {
-                pty.OutputReceived += HandleOutput;
+                pty.HandleOutput += HandleOutput;
                 
-                pty.Run();
+                pty.Spawn();
                 
                 if (showTerminal)
                 {
-                    ShowTerminal(dllPath);
+                    ShowTerminal();
                 }
                 
                 return pty;
@@ -150,9 +150,9 @@ namespace PowershellExpectDriver
             return null;
         }
         
-        public void ShowTerminal(string dllPath)
+        public void ShowTerminal()
         {
-            pty.CreateObserver(dllPath);
+            pty.CreateObserver();
         }
         
         public void HideTerminal()
@@ -190,7 +190,7 @@ namespace PowershellExpectDriver
                 InfoMessage("Closing process...");
             }
             
-            pty.OutputReceived -= HandleOutput;
+            pty.HandleOutput -= HandleOutput;
             
             pty.DisposeResources();
         }

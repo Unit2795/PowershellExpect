@@ -1,7 +1,8 @@
-﻿using Microsoft.Win32.SafeHandles;
+using Microsoft.Win32.SafeHandles;
 using System.Text;
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Reflection;
 using System.Security.Cryptography;
 using static PowershellExpectDriver.PInvoke;
 
@@ -9,7 +10,7 @@ namespace PowershellExpectDriver
 {
     public class PTY
     {
-        public event EventHandler<string>? OutputReceived;
+        public event EventHandler<string>? HandleOutput;
         
         private PTYPipe? inputPipe;
         private PTYPipe? outputPipe;
@@ -17,16 +18,30 @@ namespace PowershellExpectDriver
         private Process? pwshProcess;
         private TerminalBuffer terminalBuffer = new();
         private bool readPaused = false;
+        private string sessionId = GenerateSessionId();
+        // Location of the co-located child shell script
+        private string childScriptPath;
+        private string? dllDirectory;
+        private string dllPath;
         
         private System.Diagnostics.Process? observerProcess;
-        private string observerId = "";
-        private string observerOutputPipeName = "output";
-        private string observerInputPipeName = "input";
+        private IntPtr observerHandle = IntPtr.Zero;
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
-        private IntPtr observerHandle = IntPtr.Zero;
+        private string observerOutputPipeName;
+        private string observerInputPipeName;
+        
+        public PTY()
+        {
+            observerOutputPipeName = sessionId + "ObserverOutput";
+            observerInputPipeName = sessionId + "ObserverInput";
+            
+            dllPath = Assembly.GetExecutingAssembly().Location;
+            dllDirectory = Path.GetDirectoryName(dllPath);
+            childScriptPath = Path.Join(dllDirectory, "ChildScript.ps1");
+        }
 
-        public void Run()
+        public void Spawn()
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
@@ -50,7 +65,7 @@ namespace PowershellExpectDriver
                 {
                     DisposeResources();
                 });
-            }).Start();
+            }).Start(); 
         }
         
         public async void ObserverInput()
@@ -93,9 +108,9 @@ namespace PowershellExpectDriver
             return RandomNumberGenerator.GetInt32(100000);
         }
         
-        static string GenerateUniqueWindowTitle()
+        static string GenerateSessionId()
         {
-            return "PowerShellExpect-" + GenerateRandomHash() + GenerateRandomNumber();
+            return $"PE-{GenerateRandomHash()}-{GenerateRandomNumber()}";
         }
         
         public void ShowObserver()
@@ -108,18 +123,13 @@ namespace PowershellExpectDriver
             ShowWindow(observerHandle, 0);
         }
 
-        public void CreateObserver(string dllPath)
+        public void CreateObserver()
         {
             readPaused = true;
             
             terminalBuffer.Flush();
             
             observerProcess = new System.Diagnostics.Process();
-
-            // Generate a unique window title to identify the observer terminal
-            observerId = GenerateUniqueWindowTitle();
-            observerOutputPipeName = observerId + "output";
-            observerInputPipeName = observerId + "input";
 
             // Set window size to match PTY, set window title, set output encoding to UTF-8, and initialize the named pipe server
             string scriptContent = $@"
@@ -132,7 +142,7 @@ namespace PowershellExpectDriver
 
                 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-                Get-Content -Path '{terminalBuffer.Path}' 
+                Get-Content -Path '{terminalBuffer.Path}'
 
                 $observer = New-Object PowershellExpectDriver.ObserverTerminal
 
@@ -190,7 +200,7 @@ namespace PowershellExpectDriver
         
         protected virtual void OnOutputReceived(string outputChunk)
         {
-            var handler = OutputReceived;
+            var handler = HandleOutput;
             handler?.Invoke(this, outputChunk);
         }
         
@@ -210,8 +220,8 @@ namespace PowershellExpectDriver
         {
             observerOutput?.Close();
             observerInput?.Close();
-            observerProcess?.Close();
-            
+            observerProcess?.Kill();
+        
             Console.ResetColor();
             
             var disposables = new List<IDisposable?> { ptyProcess, pwshProcess, outputPipe, inputPipe };
@@ -317,7 +327,7 @@ namespace PowershellExpectDriver
             observerOutputPipeName = outputPipeName;
             observerInputPipeName = inputPipeName;
             
-            Task.Run(ReadChildOutput);
+            Task.Run(PrintOutputToObserver);
             InputInterceptor();
         }
         
@@ -393,7 +403,7 @@ namespace PowershellExpectDriver
         }
         
         // Receives output sent from the PTY and writes it to the observer terminal
-        private async Task ReadChildOutput()
+        private async Task PrintOutputToObserver()
         {
             var pipeClient = new NamedPipeClientStream(".", observerOutputPipeName, PipeDirection.In);
             await pipeClient.ConnectAsync();
