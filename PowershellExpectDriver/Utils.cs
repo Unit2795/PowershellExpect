@@ -16,19 +16,15 @@ namespace PowershellExpectDriver
             writePosition += incomingData.Length;
             
             // If less than 4KB of buffer is available, flush the buffer to file 
-            if ((BufferSize - writePosition) >= ChunkSize) return;
-            var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);
-            fileStream.Write(byteBuffer, 0, writePosition);
-            fileStream.Flush();
-            fileStream.Close();
+            if ((BufferSize - writePosition) < ChunkSize)
+                Flush();
         }
         
         public void Flush()
         {
-            var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);
-            fileStream.Write(byteBuffer, 0 , writePosition);
+            using var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);
+            fileStream.Write(byteBuffer, 0, writePosition);
             fileStream.Flush();
-            fileStream.Close();
             writePosition = 0;
         }
         
@@ -41,26 +37,15 @@ namespace PowershellExpectDriver
     
     public class Logger
     {
-        private readonly string tempFilePath;
-
-        public Logger()
-        {
-            tempFilePath = Path.GetTempFileName();
-        }
+        private readonly string tempFilePath = Path.GetTempFileName();
 
         public void Log(string message)
         {
-            // TODO: Max write every second
-            using (StreamWriter writer = File.AppendText(tempFilePath))
-            {
-                writer.Write(message);
-            }
+            using var writer = File.AppendText(tempFilePath);
+            writer.Write(message);
         }
 
-        public void Cleanup()
-        {
-            File.Delete(tempFilePath);
-        }
+        public void Cleanup() => File.Delete(tempFilePath);
     }
     
     public class CircularBuffer
@@ -70,7 +55,8 @@ namespace PowershellExpectDriver
 
         public CircularBuffer(int maxSize = 8192)
         {
-            if (maxSize <= 0) throw new ArgumentOutOfRangeException(nameof(maxSize), "maxSize must be greater than zero.");
+            if (maxSize <= 0) 
+                throw new ArgumentOutOfRangeException(nameof(maxSize), "maxSize must be greater than zero.");
             
             size = maxSize;
         }
@@ -85,9 +71,7 @@ namespace PowershellExpectDriver
         {
             buffer.Append(data);
             if (buffer.Length > size)
-            {
                 buffer.Remove(0, buffer.Length - size);
-            }
         }
         
         public void Clear() => buffer.Clear();

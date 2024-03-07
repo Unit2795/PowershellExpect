@@ -6,9 +6,6 @@ namespace PowershellExpectDriver
     static class PInvoke
     {
         // Console P/Invoke native functions
-        internal const int STD_OUTPUT_HANDLE = -11;
-        internal const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
-        internal const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
         internal delegate bool ConsoleEventDelegate(CtrlTypes ctrlType);
         internal enum CtrlTypes : uint
         {
@@ -18,47 +15,9 @@ namespace PowershellExpectDriver
             CTRL_LOGOFF_EVENT = 5,
             CTRL_SHUTDOWN_EVENT
         }
-        [StructLayout(LayoutKind.Explicit)]
-        public struct CHAR_INFO
-        {
-            [FieldOffset(0)] public char UnicodeChar;
-            [FieldOffset(2)] public short Attributes;
-        }
-        [StructLayout(LayoutKind.Sequential)]
-        public struct SMALL_RECT
-        {
-            public short Left;
-            public short Top;
-            public short Right;
-            public short Bottom;
-        }
-        
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern SafeFileHandle GetStdHandle(int nStdHandle);
-        
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern bool SetConsoleMode(SafeFileHandle hConsoleHandle, uint mode);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern bool GetConsoleMode(SafeFileHandle handle, out uint mode);
         
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern bool SetConsoleCtrlHandler(ConsoleEventDelegate callback, bool add);
-        
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern bool WriteConsole(
-            IntPtr hConsoleOutput, 
-            string lpBuffer, 
-            uint nNumberOfCharsToWrite, 
-            out uint lpNumberOfCharsWritten, 
-            IntPtr lpReserved
-        );
-        
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern bool AttachConsole(uint dwProcessId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern bool FreeConsole();
         
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern IntPtr FindWindow(string? lpClassName, string lpWindowName);
@@ -71,10 +30,6 @@ namespace PowershellExpectDriver
 
         [DllImport("user32.dll")]
         internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-
-        internal const int GWL_STYLE = -16;
-        internal const int WS_THICKFRAME = 0x00040000;
-        
         
         // PTY P/Invoke native constants
         internal const uint PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016;
@@ -111,10 +66,8 @@ namespace PowershellExpectDriver
             int nSize
         );
         
-        
         // Process P/Invoke native functions
         internal const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
-        internal const uint CREATE_NEW_CONSOLE = 0x00000010;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         internal struct STARTUPINFOEX

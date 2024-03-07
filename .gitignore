@@ -2,4 +2,4 @@
 *.DotSettings.user
 PowershellExpectDriver/bin
 PowershellExpectDriver/obj
-PowershellExpect/Driver/*
+PowershellExpect/*.dll
