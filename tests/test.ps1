@@ -15,6 +15,7 @@ Import-Module $module
 
 $process1 = Spawn -Command "pwsh.exe" -Timeout 5 -EnableLogging
     ShowTerminal -Interactive
+    Sleep 10
     Send "node -v"
     Expect "v20"
     Send "npm -v"
@@ -44,4 +45,4 @@ Spawn $process2 -EnableLogging -Timeout 5
     Send "`e[A"
     Sleep 5
 
-Despawn $process2
+Despawn

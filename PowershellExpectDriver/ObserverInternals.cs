@@ -8,6 +8,11 @@ namespace PowershellExpectDriver
     {
         private string observerOutputPipeName;
         private string observerInputPipeName;
+        private string observerMutexName;
+        private Mutex observerMutex;
+        private NamedPipeClientStream outputPipeClient;
+        private NamedPipeClientStream inputPipeClient;
+        private CancellationTokenSource cancellationTokenSource;
         
         // VT sequence constants
         private const string CSI = "\x1B[";
@@ -20,13 +25,24 @@ namespace PowershellExpectDriver
         private const string ALT_CTRL = "1;7";
         private const string SHIFT_ALT_CTRL = "1;8";
         
-        public ObserverInternals(string outputPipeName, string inputPipeName)
+        public ObserverInternals(string outputPipeName, string inputPipeName, string mutexName)
         {
             observerOutputPipeName = outputPipeName;
             observerInputPipeName = inputPipeName;
+            observerMutexName = mutexName;
             
-            Task.Run(PrintOutputToObserver);
-            InputInterceptor();
+            // Open the existing named Mutex
+            observerMutex = Mutex.OpenExisting(observerMutexName);
+            
+            cancellationTokenSource = new CancellationTokenSource();
+            
+            Task.Run(() => PrintOutputToObserver(cancellationTokenSource.Token));
+            Task.Run(() => InputInterceptor(cancellationTokenSource.Token));
+            
+            observerMutex.WaitOne();
+            
+            cancellationTokenSource.Cancel();
+            DetachPipes();
         }
         
         private string TranslateKeyToVTSequence(ConsoleKeyInfo keyInfo)
@@ -80,14 +96,28 @@ namespace PowershellExpectDriver
         }
 
         // Intercepts input from the observer terminal and sends it to the PTY
-        private void InputInterceptor()
+        private void InputInterceptor(CancellationToken cancellationToken)
         {
-            var pipeClient = new NamedPipeClientStream(".", observerInputPipeName, PipeDirection.Out);
-            pipeClient.Connect();
-            while (true)
+            inputPipeClient = new NamedPipeClientStream(".", observerInputPipeName, PipeDirection.Out);
+            try
             {
-                var keyInfo = Console.ReadKey(true);
-                SendKeyToChild(keyInfo, pipeClient);
+                inputPipeClient.Connect();
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (!inputPipeClient.IsConnected)
+                        break;
+
+                    // Check Console.KeyAvailable to avoid blocking the loop.
+                    if (!Console.KeyAvailable) continue;
+                    var keyInfo = Console.ReadKey(true);
+                    SendKeyToChild(keyInfo, inputPipeClient);
+                }
+            }
+            catch (IOException)
+            {
+                // Pipe closed, silently exit the method
+                return;
             }
         }
 
@@ -96,23 +126,54 @@ namespace PowershellExpectDriver
         {
             var vt = TranslateKeyToVTSequence(keyInfo);
             byte[] vtBytes = Encoding.UTF8.GetBytes(vt);
-            pipeClient.Write(vtBytes, 0, vtBytes.Length);
-            pipeClient.Flush();
+            try
+            {
+                pipeClient.Write(vtBytes, 0, vtBytes.Length);
+                pipeClient.Flush();
+            }
+            catch (IOException)
+            {
+                // Pipe closed, silently exit the method
+                return;
+            }
         }
         
         // Receives output sent from the PTY and writes it to the observer terminal
-        private async Task PrintOutputToObserver()
+        private async Task PrintOutputToObserver(CancellationToken cancellationToken)
         {
-            var pipeClient = new NamedPipeClientStream(".", observerOutputPipeName, PipeDirection.In);
-            await pipeClient.ConnectAsync();
-            var terminalOutput = Console.OpenStandardOutput();
-            
-            var buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = pipeClient.Read(buffer, 0, buffer.Length)) > 0)
+            outputPipeClient  = new NamedPipeClientStream(".", observerOutputPipeName, PipeDirection.In);
+            try
             {
-                await terminalOutput.WriteAsync(buffer, 0, bytesRead);
+                await outputPipeClient.ConnectAsync();
+                var terminalOutput = Console.OpenStandardOutput();
+                var buffer = new byte[4096];
+                int bytesRead;
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (!outputPipeClient.IsConnected)
+                        break;
+                    
+                    bytesRead = await outputPipeClient.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    if (bytesRead > 0)
+                    {
+                        await terminalOutput.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+                    }
+                }
             }
+            catch (IOException)
+            {
+                // Pipe closed, silently exit the method
+                return;
+            }
+        }
+        
+        private void DetachPipes()
+        {
+            outputPipeClient.Close();
+            inputPipeClient.Close();
+
+            // Terminal is now free to act on its own
         }
     }
 }

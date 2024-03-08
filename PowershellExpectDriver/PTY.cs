@@ -30,16 +30,19 @@ namespace PowershellExpectDriver
         private string dllPath = Assembly.GetExecutingAssembly().Location;
         
         private System.Diagnostics.Process? observerProcess;
-        private IntPtr observerHandle = IntPtr.Zero;
+        private bool observerInteractive;
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
         private string observerOutputPipeName;
         private string observerInputPipeName;
+        private string observerMutexName;
+        private Mutex? observerMutex;
         
         public PTY()
         {
             observerOutputPipeName = $"{sessionId}ObserverOutput";
             observerInputPipeName = $"{sessionId}ObserverInput";
+            observerMutexName = $"{sessionId}ObserverMutex";
 
             dllDirectory = Path.GetDirectoryName(dllPath);
             // TODO: Use this to load observer script or remove it
@@ -136,6 +139,8 @@ namespace PowershellExpectDriver
             
             Console.ResetColor();
             
+            observerMutex?.ReleaseMutex();
+            
             ptyProcess?.Dispose();
             pwshProcess?.Dispose();
             outputPipe?.Dispose();
@@ -159,7 +164,8 @@ namespace PowershellExpectDriver
             await observerInput.WaitForConnectionAsync();
             while ((bytesRead = await observerInput.ReadAsync(byteBuffer, 0, bufferLength)) > 0)
             {
-                string outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
+                if (!observerInteractive) continue;
+                var outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
                 CopyInputToPipe(outputChunk, true);
             }
         }
@@ -186,12 +192,18 @@ namespace PowershellExpectDriver
             
             observerProcess.Start();
             
+            // This mutex will signal to the observer process that the main process has been destroyed, and it may take over its own I/O
+            observerMutex = new Mutex(true, observerMutexName);
+            
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
-            
+
             if (isInteractive)
+            {
+                observerInteractive = true;
                 Task.Run(ObserverInput);
+            }
             
             readPaused = false;
         }
@@ -206,7 +218,7 @@ namespace PowershellExpectDriver
 
             Get-Content -Path '{terminalBuffer.Path}'
 
-            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}')
+            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerMutexName}')
         ";
         
         public static void BringWindowToFront(IntPtr hwnd)
@@ -220,6 +232,8 @@ namespace PowershellExpectDriver
         {
             if (observerProcess == null)
                 return;
+
+            observerInteractive = isInteractive;
             
             IntPtr hwnd = IntPtr.Zero;
             EnumWindows((hWnd, lParam) =>
@@ -244,6 +258,8 @@ namespace PowershellExpectDriver
         public void DestroyObserver() {
             readPaused = true;
             
+            observerMutex?.Dispose();
+            observerMutex = null;
             observerOutput?.Dispose();
             observerOutput = null;
             observerInput?.Dispose();
