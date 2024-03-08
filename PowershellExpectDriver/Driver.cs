@@ -15,8 +15,9 @@ namespace PowershellExpectDriver
         private readonly CircularBuffer cmdBuffer = new();
         // Store the last output read timestamp for detecting idle duration.
         private long lastRead = 0;
+        private bool hasObserver = false;
         
-        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal, string command = "pwsh")
+        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, string command = "pwsh")
         {
             if (timeout > 0)
                 timeoutSeconds = timeout;
@@ -27,9 +28,6 @@ namespace PowershellExpectDriver
             
             pty.HandleOutput += HandleOutput;
             pty.Spawn(command, workingDirectory);
-            
-            if (showTerminal)
-                ShowTerminal();
             
             return pty;
         }
@@ -144,10 +142,27 @@ namespace PowershellExpectDriver
             return null;
         }
 
-        public void ShowTerminal() => pty.CreateObserver();
-        
-        public void HideTerminal() => pty.HideObserver();
-        
+        public void ShowTerminal(bool isInteractive)
+        {
+            if (!hasObserver)
+            {
+                pty.CreateObserver(isInteractive);
+                hasObserver = true;
+            } else {
+                pty.FocusObserver(isInteractive);
+            }
+        }
+
+        public void HideTerminal()
+        {
+            if (hasObserver)
+            {
+                pty.DestroyObserver();
+            }
+            
+            hasObserver = false;
+        }
+
         public ProcessMetadata? SpawnInfo() => pty.Monitor?.Metadata;
         
         public void Exit()

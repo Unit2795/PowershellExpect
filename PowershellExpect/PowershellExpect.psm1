@@ -19,8 +19,7 @@ function Spawn {
         
         [string]$WorkDir = $PWD,
         [int]$Timeout = 0,
-        [switch]$EnableLogging = $false,
-        [switch]$ShowTerminal = $false
+        [switch]$EnableLogging = $false
     )
     
     if ($Process -ne $null) {
@@ -29,7 +28,7 @@ function Spawn {
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 
-        $pty.Spawn($WorkDir, $Timeout, $EnableLogging, $ShowTerminal, $Command) | Out-Null
+        $pty.Spawn($WorkDir, $Timeout, $EnableLogging, $Command) | Out-Null
 
         $script:activeProcess = $pty
     }
@@ -96,7 +95,7 @@ function ShowTerminal {
     param(
         [switch]$Interactive = $false
     )
-    $script:activeProcess.ShowTerminal()
+    $script:activeProcess.ShowTerminal($Interactive)
 }
 
 function HideTerminal {

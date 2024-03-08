@@ -136,9 +136,6 @@ namespace PowershellExpectDriver
             
             Console.ResetColor();
             
-            observerOutput?.Dispose();
-            observerInput?.Dispose();
-            observerProcess?.Kill();
             ptyProcess?.Dispose();
             pwshProcess?.Dispose();
             outputPipe?.Dispose();
@@ -168,12 +165,8 @@ namespace PowershellExpectDriver
         }
         
         private static string GenerateSessionId() => $"PE-{Guid.NewGuid()}-{RandomNumberGenerator.GetInt32(100000)}";
-        
-        public void ShowObserver() => ShowWindow(observerHandle, 5);
-        
-        public void HideObserver() => ShowWindow(observerHandle, 0);
 
-        public void CreateObserver()
+        public void CreateObserver(bool isInteractive)
         {
             readPaused = true;
             
@@ -197,11 +190,8 @@ namespace PowershellExpectDriver
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
             
-            Task.Run(ObserverInput);
-            
-            // TODO: Instead of using sleep, maybe check to see if output and input pipes are connected, then resume output
-            // Ensure the terminal has time to initialize before resuming output
-            Thread.Sleep(2000);
+            if (isInteractive)
+                Task.Run(ObserverInput);
             
             readPaused = false;
         }
@@ -218,5 +208,50 @@ namespace PowershellExpectDriver
 
             $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}')
         ";
+        
+        public static void BringWindowToFront(IntPtr hwnd)
+        {
+            ShowWindow(hwnd, SW_RESTORE);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        
+        public void FocusObserver(bool isInteractive)
+        {
+            if (observerProcess == null)
+                return;
+            
+            IntPtr hwnd = IntPtr.Zero;
+            EnumWindows((hWnd, lParam) =>
+            {
+                int currentProcessId;
+                GetWindowThreadProcessId(hWnd, out currentProcessId);
+
+                if (currentProcessId == observerProcess.Id && IsWindowVisible(hWnd))
+                {
+                    hwnd = hWnd;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            
+            if (hwnd != IntPtr.Zero)
+            {
+                BringWindowToFront(hwnd);
+            }
+        }
+        
+        public void DestroyObserver() {
+            readPaused = true;
+            
+            observerOutput?.Dispose();
+            observerOutput = null;
+            observerInput?.Dispose();
+            observerInput = null;
+            observerProcess?.Kill();
+            observerProcess = null;
+            
+            readPaused = false;
+        }
     }
 }
