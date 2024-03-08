@@ -9,27 +9,31 @@ $helpersPath = Join-Path $PSScriptRoot "Helpers.ps1"
 $script:activeProcess = $null
 
 function Spawn {
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
     param(
-        $Process,
+        [Parameter(Position = 0)]
+        $Process = $null,
+        
+        [Parameter(ParameterSetName = 'Command')]
+        [string]$Command = "pwsh",
+        
+        [string]$WorkDir = $PWD,
         [int]$Timeout = 0,
         [switch]$EnableLogging = $false,
         [switch]$ShowTerminal = $false
     )
-
-    if ($null -eq $Process)
-    {
+    
+    if ($Process -ne $null) {
+        $script:activeProcess = $Process
+    } else {
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 
-        $pty.Spawn($PWD, $Timeout, $EnableLogging, $ShowTerminal) | Out-Null
+        $pty.Spawn($WorkDir, $Timeout, $EnableLogging, $ShowTerminal, $Command) | Out-Null
 
         $script:activeProcess = $pty
     }
-    else 
-    {
-        $script:activeProcess = $Process
-    }
-
+    
     if (Test-OutputCaptured) {
         return $script:activeProcess
     }
@@ -43,8 +47,7 @@ function Send {
         [int]$IgnoreLines = 0
     )
 
-    try
-    {
+    try {
         $result = $script:activeProcess.Send($Command, $NoNewline, $IdleDuration, $IgnoreLines)
         
         if ($null -ne $result) {
@@ -100,4 +103,24 @@ function HideTerminal {
     $script:activeProcess.HideTerminal()
 }
 
-Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal, HideTerminal
+function GetSpawn {
+    return $script:activeProcess
+}
+
+function SpawnInfo {
+    $script:activeProcess.SpawnInfo()
+}
+
+function Despawn {
+    param(
+        $Process
+    )
+    
+    if ($null -eq $Process) {
+        $script:activeProcess.Exit()
+    } else {
+        $Process.Exit()
+    }
+}
+
+Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal, HideTerminal, SpawnInfo, GetSpawn, Despawn

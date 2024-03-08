@@ -1,4 +1,3 @@
-using System.IO.Pipes;
 using System.Text.RegularExpressions;
 
 namespace PowershellExpectDriver
@@ -10,22 +9,24 @@ namespace PowershellExpectDriver
         private int timeoutSeconds;
         // Whether logging has been enabled or not
         private bool loggingEnabled;
-        // Buffer that contains the output of the process
-        private readonly CircularBuffer buffer = new();
+        // Complete buffer (up to max size) used for matching
+        private readonly CircularBuffer matchBuffer = new();
+        // Buffer that is cleared after each send command, for returning results of individual commands
+        private readonly CircularBuffer cmdBuffer = new();
+        // Store the last output read timestamp for detecting idle duration.
+        private long lastRead = 0;
         
-        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal)
+        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, bool showTerminal, string command = "pwsh")
         {
             if (timeout > 0)
                 timeoutSeconds = timeout;
             
             loggingEnabled = enableLogging;
             
-            if (loggingEnabled)
-                InfoMessage("Starting process...");
+            InfoMessage("Starting process...");
             
             pty.HandleOutput += HandleOutput;
-            
-            pty.Spawn();
+            pty.Spawn(command, workingDirectory);
             
             if (showTerminal)
                 ShowTerminal();
@@ -35,83 +36,98 @@ namespace PowershellExpectDriver
         
         public string? Send(string command, bool noNewLine, int idleDuration, int ignoreLines)
         {
+            cmdBuffer.Clear();
+            
+            pty.Monitor?.GetSnapshot();
+            
             pty.CopyInputToPipe(command, noNewLine);
 
             if (idleDuration <= 0) 
                 return null;
             
             // Capture the initial timestamp
-            var startTime = DateTimeOffset.Now;
-            var endTime = startTime.AddSeconds(idleDuration);
-            var idleOutput = new CircularBuffer
-            {
-                Data = buffer.Data
-            };
+            var endTime = DateTimeOffset.Now.AddSeconds(idleDuration).ToUnixTimeMilliseconds();
+            var previousRead = lastRead;
 
             // Loop until the idle duration expires
-            while (DateTimeOffset.Now < endTime)
+            while (DateTimeOffset.Now.ToUnixTimeMilliseconds() < endTime)
             {
-                Thread.Sleep(200);
-
-                // If there is new output, append it to the idle output and reset the timer
-                if (buffer.Data.Length <= 0) 
+                Thread.Sleep(500);
+                
+                // No new output has been read, continue to the next iteration
+                if (lastRead == previousRead) 
                     continue;
                 
-                startTime = DateTimeOffset.Now;
-                endTime = startTime.AddSeconds(idleDuration);
-                    
-                // Append any new output and clear the buffer
-                idleOutput.Data = buffer.Data;
-                buffer.Clear();
+                previousRead = lastRead;
+                // If there is new output, reset the timer
+                endTime = DateTimeOffset.Now.AddSeconds(idleDuration).ToUnixTimeMilliseconds();
             }
 
             if (ignoreLines > 0)
                 // Split the string into lines, remove the requested number of lines from the start, and join them back together
                 // Most useful for removing the command echo from the output
-                idleOutput.Data = string.Join("\n", idleOutput.Data.Split('\n').Skip(ignoreLines));
+                cmdBuffer.Data = string.Join("\n", cmdBuffer.Data.Split('\n').Skip(ignoreLines));
 
             // Return the captured output during idle time as a single string
-            return idleOutput.Data;
+            return cmdBuffer.Data;
         }
         
-        public (string terminalOutput, string match)? Expect(string regexString, int timeout, bool continueOnTimeout, bool eof)
+        public struct ExpectData(string terminalOutput, string? match, int? exitCode)
         {
-            if (eof)
-            {
-                Exit();
-                return null;
-            }
+            public string TerminalOutput = terminalOutput;
+            public string? Match = match;
+            public int? ExitCode = exitCode;
+        }
+        
+        public ExpectData? Expect(string regexString, int timeout, bool continueOnTimeout, bool eof)
+        {
+            pty.Monitor?.GetSnapshot();
             
             // Convert incoming regex string to actual Regex
             Regex regex = new Regex(regexString);
             
-            // If no timeout is set and a global timeout is set, use the global timeout
+            // If no local timeout is set and a global timeout is set, use the global timeout
             if (timeout == 0 && timeoutSeconds > 0)
                 timeout = timeoutSeconds;
             
             // Calculate the max timestamp we can reach before the expect times out
-            long? maxTimestamp = DateTimeOffset.Now.ToUnixTimeSeconds() + timeout;
+            long? maxTimestamp = DateTimeOffset.Now.AddSeconds(timeout).ToUnixTimeMilliseconds();
         
             // While no match is found (or no timeout occurs), continue to evaluate output until match is found
             while (true)
             {
-                var match = regex.Match(buffer.Data);
-                if (match.Success)
+                if (eof)
                 {
-                    // Log the match if logging is enabled
-                    if (loggingEnabled)
-                        InfoMessage("Match found: " + match.Value);
-                    
-                    return new (buffer.Data, match.Value);
+                    var exitCode = pty.Monitor?.Metadata.ExitCode;
+                    if (exitCode != null)
+                    {
+                        return new ExpectData
+                        {
+                            TerminalOutput = cmdBuffer.Data,
+                            ExitCode = exitCode
+                        };
+                    }
                 }
-                buffer.Clear();
+                else
+                {
+                    var match = regex.Match(matchBuffer.Data);
+                    if (match.Success)
+                    {
+                        InfoMessage("Match found: " + match.Value);
+                        return new ExpectData
+                        {
+                            TerminalOutput = cmdBuffer.Data,
+                            Match = match.Value
+                        };
+                    }
+                }
                 
                 // If a timeout is set and we've exceeded the max time, throw timeout error and stop the loop
-                if (timeout > 0 && DateTimeOffset.Now.ToUnixTimeSeconds() >= maxTimestamp)
+                if (timeout > 0 && DateTimeOffset.Now.ToUnixTimeMilliseconds() >= maxTimestamp)
                 {
-                    var timeoutMessage = $"Timed out waiting for: '{regexString}'";
+                    var timeoutMessage = $"Timed out waiting for: '{( eof ? "EOF" : regexString )}'";
                     InfoMessage(timeoutMessage);
-                    if (continueOnTimeout != true)
+                    if (!continueOnTimeout)
                     {
                         Exit();
                         Environment.Exit(1);
@@ -127,31 +143,38 @@ namespace PowershellExpectDriver
 
             return null;
         }
-        
+
         public void ShowTerminal() => pty.CreateObserver();
-    
+        
         public void HideTerminal() => pty.HideObserver();
         
-        private void Exit()
+        public ProcessMetadata? SpawnInfo() => pty.Monitor?.Metadata;
+        
+        public void Exit()
         {
+            pty.Monitor?.GetSnapshot();
+            
             // Log info message about the process shutdown
-            if (loggingEnabled)
-                InfoMessage("Closing process...");
+            InfoMessage("Closing process...");
             
             pty.HandleOutput -= HandleOutput;
-            
             pty.DisposeResources();
         }
         
-        private void HandleOutput(object? sender, string outputBuffer) => buffer.Data = outputBuffer;
-        
+        // Add PTY output to the matching buffer
+        private void HandleOutput(object? sender, string outputBuffer)
+        {
+            if (outputBuffer.Length <= 0) return;
+            matchBuffer.Data = outputBuffer;
+            lastRead = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+            cmdBuffer.Data = outputBuffer;
+        }
+
         // Log a message to keep the user appraised of progress
         private void InfoMessage(string message)
         {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("[PowershellExpect] " + message);
-            // Revert back to default color after logging info message
-            Console.ForegroundColor = ConsoleColor.Blue;
+            if (loggingEnabled)
+                Console.WriteLine("[PowershellExpect] " + message);
         }
     }
 }

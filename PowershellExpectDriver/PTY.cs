@@ -12,7 +12,9 @@ namespace PowershellExpectDriver
     {
         // Event handler for output received from the PTY/child process
         public event EventHandler<string>? HandleOutput;
-        
+        public ProcessMonitor? Monitor;
+
+        private bool disposed = false;
         // Pipes for input and output to the PTY
         private PTYPipe? inputPipe;
         private PTYPipe? outputPipe;
@@ -45,14 +47,16 @@ namespace PowershellExpectDriver
         }
         
         // Spawn a new PTY and child process
-        public void Spawn()
+        public void Spawn(string command, string workingDirectory)
         {
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
             ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 30);
-            pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle);
+            pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, command, workingDirectory);
+
+            Monitor = new ProcessMonitor(pwshProcess.ProcessInfo.dwProcessId);
             
-            Task.Run(() => CopyPipeToOutput(outputPipe.ReadSide));
+            _ = CopyPipeToOutput(outputPipe.ReadSide);
             
             // Free resources if case the console is ungracefully closed (e.g. by the 'x' in the window titlebar or CTRL+C)
             OnClose(DisposeResources);
@@ -125,6 +129,11 @@ namespace PowershellExpectDriver
         
         public void DisposeResources()
         {
+            if (disposed)
+                return;
+            
+            disposed = true;
+            
             Console.ResetColor();
             
             observerOutput?.Dispose();

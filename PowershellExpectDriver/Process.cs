@@ -6,10 +6,10 @@ namespace PowershellExpectDriver
     static class ProcessFactory
     {
         // Start and configure a process. The return value represents the process and should be disposed.
-        internal static Process Start(IntPtr attributes, IntPtr hPC)
+        internal static Process Start(IntPtr attributes, IntPtr hPC, string command, string workingDirectory)
         {
             var startupInfo = ConfigureProcessThread(hPC, attributes);
-            var processInfo = RunProcess(ref startupInfo);
+            var processInfo = RunProcess(ref startupInfo, command, workingDirectory);
             return new Process(startupInfo, processInfo);
         }
 
@@ -57,20 +57,20 @@ namespace PowershellExpectDriver
             return startupInfo;
         }
 
-        private static PROCESS_INFORMATION RunProcess(ref STARTUPINFOEX sInfoEx)
+        private static PROCESS_INFORMATION RunProcess(ref STARTUPINFOEX sInfoEx, string command, string workingDirectory)
         {
             int securityAttributeSize = Marshal.SizeOf<SECURITY_ATTRIBUTES>();
             var pSec = new SECURITY_ATTRIBUTES { nLength = securityAttributeSize };
             var tSec = new SECURITY_ATTRIBUTES { nLength = securityAttributeSize };
             var success = CreateProcess(
                 null,
-                "pwsh.exe",
+                command,
                 ref pSec,
                 ref tSec,
                 false,
                 EXTENDED_STARTUPINFO_PRESENT,
                 IntPtr.Zero,
-                null,
+                workingDirectory,
                 ref sInfoEx,
                 out PROCESS_INFORMATION pInfo
             );
