@@ -1,4 +1,4 @@
-﻿using System.IO.Pipes;
+using System.IO.Pipes;
 using System.Text;
 
 namespace PowershellExpectDriver
@@ -10,9 +10,12 @@ namespace PowershellExpectDriver
         private string observerInputPipeName;
         private string observerMutexName;
         private Mutex observerMutex;
-        private NamedPipeClientStream outputPipeClient;
-        private NamedPipeClientStream inputPipeClient;
+        private NamedPipeClientStream? outputPipeClient;
+        private NamedPipeClientStream? inputPipeClient;
         private CancellationTokenSource cancellationTokenSource;
+        private long lastAdjustment;
+        private int observerWidth;
+        private int observerHeight;
         
         // VT sequence constants
         private const string CSI = "\x1B[";
@@ -25,11 +28,13 @@ namespace PowershellExpectDriver
         private const string ALT_CTRL = "1;7";
         private const string SHIFT_ALT_CTRL = "1;8";
         
-        public ObserverInternals(string outputPipeName, string inputPipeName, string mutexName)
+        public ObserverInternals(string outputPipeName, string inputPipeName, string mutexName, int width, int height)
         {
             observerOutputPipeName = outputPipeName;
             observerInputPipeName = inputPipeName;
             observerMutexName = mutexName;
+            observerWidth = width;
+            observerHeight = height;
             
             // Open the existing named Mutex
             observerMutex = Mutex.OpenExisting(observerMutexName);
@@ -154,6 +159,24 @@ namespace PowershellExpectDriver
                     if (!outputPipeClient.IsConnected)
                         break;
                     
+                    /*
+                        Adjust the buffer size and window size (if necessary, due to user resize) at max every 500ms to keep in sync with the PTY, to avoid the output being mangled.
+                        NOTE: If this proves to be too inefficient, may need to investigate subclassing the terminal/receiving resize events, increase the interval, or try something else.
+                    */
+                    if ((DateTimeOffset.Now.ToUnixTimeMilliseconds() - lastAdjustment) > 500)
+                    {
+                        lastAdjustment = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                        if (Console.WindowHeight != observerHeight || Console.WindowWidth != observerWidth)
+                        {
+                            // The buffer size matches the window size on Linux/MacOS
+                            if (OperatingSystem.IsWindows()) 
+                            {
+                                Console.SetBufferSize(observerWidth, observerHeight);
+                            }
+                            Console.SetWindowSize(observerWidth, observerHeight);
+                        }
+                    }
+                    
                     bytesRead = await outputPipeClient.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                     if (bytesRead > 0)
                     {
@@ -170,8 +193,8 @@ namespace PowershellExpectDriver
         
         private void DetachPipes()
         {
-            outputPipeClient.Close();
-            inputPipeClient.Close();
+            outputPipeClient?.Close();
+            inputPipeClient?.Close();
 
             // Terminal is now free to act on its own
         }

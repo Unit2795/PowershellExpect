@@ -30,6 +30,7 @@ namespace PowershellExpectDriver
         private string dllPath = Assembly.GetExecutingAssembly().Location;
         
         private System.Diagnostics.Process? observerProcess;
+        private IntPtr observerWindowHandle;
         private bool observerInteractive;
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
@@ -37,6 +38,8 @@ namespace PowershellExpectDriver
         private string observerInputPipeName;
         private string observerMutexName;
         private Mutex? observerMutex;
+        private int observerWidth;
+        private int observerHeight;
         
         public PTY()
         {
@@ -50,11 +53,14 @@ namespace PowershellExpectDriver
         }
         
         // Spawn a new PTY and child process
-        public void Spawn(string command, string workingDirectory)
+        public void Spawn(string command, string workingDirectory, int width, int height)
         {
+            observerWidth = width;
+            observerHeight = height;
+            
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
-            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, 120, 30);
+            ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, width, height);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, command, workingDirectory);
 
             Monitor = new ProcessMonitor(pwshProcess.ProcessInfo.dwProcessId);
@@ -195,6 +201,17 @@ namespace PowershellExpectDriver
             // This mutex will signal to the observer process that the main process has been destroyed, and it may take over its own I/O
             observerMutex = new Mutex(true, observerMutexName);
             
+            EnumWindows((hWnd, lParam) =>
+            {
+                int currentProcessId;
+                GetWindowThreadProcessId(hWnd, out currentProcessId);
+
+                if (currentProcessId != observerProcess.Id || !IsWindowVisible(hWnd)) return true;
+                
+                observerWindowHandle = hWnd;
+                return false;
+            }, IntPtr.Zero);
+            
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
@@ -207,18 +224,17 @@ namespace PowershellExpectDriver
             
             readPaused = false;
         }
-        
+
         private string GetObserverScript() => $@"
             Import-Module '{dllPath}'
-            
-            $Host.UI.RawUI.WindowSize = @{{ Width = 120; Height = 30 }}
-            $Host.UI.RawUI.BufferSize = @{{ Width = 120; Height = 30 }}
 
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+            Clear-Host
+
             Get-Content -Path '{terminalBuffer.Path}'
 
-            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerMutexName}')
+            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerMutexName}', '{observerWidth}', '{observerHeight}')
         ";
         
         public static void BringWindowToFront(IntPtr hwnd)
@@ -235,23 +251,9 @@ namespace PowershellExpectDriver
 
             observerInteractive = isInteractive;
             
-            IntPtr hwnd = IntPtr.Zero;
-            EnumWindows((hWnd, lParam) =>
+            if (observerWindowHandle != IntPtr.Zero)
             {
-                int currentProcessId;
-                GetWindowThreadProcessId(hWnd, out currentProcessId);
-
-                if (currentProcessId == observerProcess.Id && IsWindowVisible(hWnd))
-                {
-                    hwnd = hWnd;
-                    return false;
-                }
-                return true;
-            }, IntPtr.Zero);
-            
-            if (hwnd != IntPtr.Zero)
-            {
-                BringWindowToFront(hwnd);
+                BringWindowToFront(observerWindowHandle);
             }
         }
         

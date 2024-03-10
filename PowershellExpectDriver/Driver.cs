@@ -17,7 +17,7 @@ namespace PowershellExpectDriver
         private long lastRead = 0;
         private bool hasObserver = false;
         
-        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, string command = "pwsh")
+        public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, int width, int height, string command = "pwsh")
         {
             if (timeout > 0)
                 timeoutSeconds = timeout;
@@ -27,7 +27,7 @@ namespace PowershellExpectDriver
             InfoMessage("Starting process...");
             
             pty.HandleOutput += HandleOutput;
-            pty.Spawn(command, workingDirectory);
+            pty.Spawn(command, workingDirectory, width, height);
             
             return pty;
         }
@@ -142,7 +142,7 @@ namespace PowershellExpectDriver
             return null;
         }
 
-        public void ShowTerminal(bool isInteractive)
+        public void ShowTerminal(bool isInteractive, bool noNewWindow)
         {
             if (!hasObserver)
             {

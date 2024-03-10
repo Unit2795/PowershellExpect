@@ -15,19 +15,21 @@ Import-Module $module
 
 $process1 = Spawn -Command "pwsh.exe" -Timeout 5 -EnableLogging
     ShowTerminal -Interactive
-    Sleep 10
     Send "node -v"
     Expect "v20"
     Send "npm -v"
     Expect "10.*"
-    Sleep 5
     ShowTerminal
-    Sleep 5
     Send "pnpm -v"
     Expect "8\..*"
 
 $process2 = Spawn -Timeout 20 -EnableLogging
     ShowTerminal -Interactive
+    sleep 5
+    Send '$host.UI.RawUI.WindowSize'
+    sleep 5
+    Send '$host.UI.RawUI.WindowSize'
+    sleep 5
     Send "cd C:\Users\david\OneDrive\Desktop\testdir"
     Send "Remove-Item -Path 'C:\Users\david\OneDrive\Desktop\testdir\*' -Recurse -Force"
     Send "pnpm create tauri-app"
