@@ -168,12 +168,12 @@ namespace PowershellExpectDriver
                         lastAdjustment = DateTimeOffset.Now.ToUnixTimeMilliseconds();
                         if (Console.WindowHeight != observerHeight || Console.WindowWidth != observerWidth)
                         {
+                            Console.SetWindowSize(observerWidth, observerHeight);
                             // The buffer size matches the window size on Linux/MacOS
                             if (OperatingSystem.IsWindows()) 
                             {
                                 Console.SetBufferSize(observerWidth, observerHeight);
                             }
-                            Console.SetWindowSize(observerWidth, observerHeight);
                         }
                     }
                     
