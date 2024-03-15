@@ -21,3 +21,20 @@ function Test-OutputCaptured {
         return $false
     }
 }
+
+<#
+    Check if a program exists in the PATH and returns a boolean value
+#>
+function Test-ProgramExists {
+    [OutputType([Boolean])]
+    param(
+        [string]$programName
+    )
+
+    $programPath = (Get-Command $programName -ErrorAction SilentlyContinue).Path
+    if ($null -eq $programPath) {
+        return $false
+    } else {
+        return Test-Path $programPath
+    }
+}

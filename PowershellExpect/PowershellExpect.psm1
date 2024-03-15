@@ -15,7 +15,7 @@ function Spawn {
         $Process = $null,
         
         [Parameter(ParameterSetName = 'Command')]
-        [string]$Command = "pwsh",
+        [string]$Command = $null,
         
         [string]$WorkDir = $PWD,
         [int]$Timeout = 0,
@@ -23,6 +23,25 @@ function Spawn {
         [int]$X = 0,
         [int]$Y = 0
     )
+
+    # Check if pwsh (v7) or powershell (v5) can be ran if no command is provided
+    if ("" -eq $Command) {
+        $commands = @('pwsh', 'powershell')
+        $isRunnable = $false
+
+        foreach ($cmd in $commands) {
+            $isRunnable = Test-ProgramExists -programName $cmd
+            if ($isRunnable) {
+                $Command = $cmd
+                break
+            }
+        }
+
+        if (-not $isRunnable) {
+            Write-Error "PowershellExpect requires either pwsh (v7) or powershell (v5) to be installed and in the PATH if you do not provide a command to spawn."
+            exit
+        }
+    }
     
     if ($X -eq 0)
     {
