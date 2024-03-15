@@ -20,11 +20,20 @@ function Spawn {
         [string]$WorkDir = $PWD,
         [int]$Timeout = 0,
         [switch]$EnableLogging = $false,
-        [int]$X = 120,
-        [int]$Y = 30
+        [int]$X = 0,
+        [int]$Y = 0
     )
     
-    if ($Process -ne $null) {
+    if ($X -eq 0)
+    {
+        $X = if ($IsWindows) { 120 } else { 80 }
+    }
+    if ($Y -eq 0)
+    {
+        $Y = if ($IsWindows) { 30 } else { 24 }
+    }
+    
+    if ($null -ne $Process) {
         $script:activeProcess = $Process
     } else {
         # Initialize a new instance of the C# driver object

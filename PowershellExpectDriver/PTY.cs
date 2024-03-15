@@ -34,17 +34,24 @@ namespace PowershellExpectDriver
         private bool observerInteractive;
         private System.IO.Pipes.NamedPipeServerStream? observerOutput;
         private System.IO.Pipes.NamedPipeServerStream? observerInput;
+        private System.IO.Pipes.NamedPipeServerStream? observerResize;
         private string observerOutputPipeName;
         private string observerInputPipeName;
+        private string observerResizePipeName;
         private string observerMutexName;
         private Mutex? observerMutex;
-        private int observerWidth;
-        private int observerHeight;
+        private int initiaPtyWidth;
+        private int initiaPtyHeight;
+        private int ptyWidth;
+        private int ptyHeight;
+        private System.Timers.Timer resizeTimer;
+        private bool resizeTriggered;
         
         public PTY()
         {
             observerOutputPipeName = $"{sessionId}ObserverOutput";
             observerInputPipeName = $"{sessionId}ObserverInput";
+            observerResizePipeName = $"{sessionId}ObserverResize";
             observerMutexName = $"{sessionId}ObserverMutex";
 
             dllDirectory = Path.GetDirectoryName(dllPath);
@@ -55,15 +62,15 @@ namespace PowershellExpectDriver
         // Spawn a new PTY and child process
         public void Spawn(string command, string workingDirectory, int width, int height)
         {
-            observerWidth = width;
-            observerHeight = height;
-            
             inputPipe = new PTYPipe();
             outputPipe = new PTYPipe();
             ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, width, height);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, command, workingDirectory);
-
             Monitor = new ProcessMonitor(pwshProcess.ProcessInfo.dwProcessId);
+            initiaPtyWidth = width;
+            initiaPtyHeight = height;
+            ptyWidth = width;
+            ptyHeight = height;
             
             _ = CopyPipeToOutput(outputPipe.ReadSide);
             
@@ -159,23 +166,6 @@ namespace PowershellExpectDriver
                 SafeWaitHandle = new SafeWaitHandle(process.ProcessInfo.hProcess, ownsHandle: false)
             };
         
-        // Reads input from the observer terminal and writes it to the PTY input pipe
-        public async void ObserverInput()
-        {
-            const int bufferLength = 4096;
-            var byteBuffer = new byte[bufferLength];
-            int bytesRead;
-            observerInput = new NamedPipeServerStream(observerInputPipeName, PipeDirection.In);
-
-            await observerInput.WaitForConnectionAsync();
-            while ((bytesRead = await observerInput.ReadAsync(byteBuffer, 0, bufferLength)) > 0)
-            {
-                if (!observerInteractive) continue;
-                var outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
-                CopyInputToPipe(outputChunk, true);
-            }
-        }
-        
         private static string GenerateSessionId() => $"PE-{Guid.NewGuid()}-{RandomNumberGenerator.GetInt32(100000)}";
 
         public void CreateObserver(bool isInteractive)
@@ -212,6 +202,10 @@ namespace PowershellExpectDriver
                 return false;
             }, IntPtr.Zero);
             
+            observerResize = new NamedPipeServerStream(observerResizePipeName, PipeDirection.In );
+            observerResize.WaitForConnection();
+            Task.Run(ObserverResize);
+            
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
@@ -234,7 +228,7 @@ namespace PowershellExpectDriver
 
             Get-Content -Path '{terminalBuffer.Path}'
 
-            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerMutexName}', '{observerWidth}', '{observerHeight}')
+            $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerResizePipeName}', '{observerMutexName}')
         ";
         
         public static void BringWindowToFront(IntPtr hwnd)
@@ -242,6 +236,71 @@ namespace PowershellExpectDriver
             ShowWindow(hwnd, SW_RESTORE);
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
+        }
+        
+
+        private void ResizeTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (!resizeTriggered) return;
+            Console.WriteLine($"Resizing observer terminal to {ptyWidth}x{ptyHeight}");
+            ResizePTY(ptyWidth, ptyHeight);
+            resizeTriggered = false;
+        }
+        
+        private void ResizePTY(int newWidth, int newHeight)
+        {
+            readPaused = true;
+            observerInteractive = false;
+            ptyProcess?.Resize(newWidth, newHeight);
+            readPaused = false;
+            observerInteractive = true;
+        }
+
+        public async Task ObserverResize()
+        {
+            // Initialize the resize timer but don't start it yet.
+            // Timer will call ResizePty method after 1000ms of inactivity.
+            resizeTimer = new System.Timers.Timer(1000);
+            resizeTimer.AutoReset = false;
+            resizeTimer.Elapsed += ResizeTimerElapsed;
+            
+            const int bufferLength = 4096;
+            var byteBuffer = new byte[bufferLength];
+            int bytesRead;
+
+            while ((bytesRead = await observerResize.ReadAsync(byteBuffer, 0, bufferLength)) > 0)
+            {
+                var resizeMessage = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
+                var dimensions = resizeMessage.Split('x');
+                var newWidth = int.Parse(dimensions[0]);
+                var newHeight = int.Parse(dimensions[1]);
+
+                if (newHeight == ptyHeight && newWidth == ptyWidth) continue;
+
+                ptyWidth = newWidth;
+                ptyHeight = newHeight;
+
+                resizeTriggered = true;
+                resizeTimer.Stop(); // Stop the timer if it's already running
+                resizeTimer.Start(); // Start or restart the timer
+            }
+        }
+        
+        // Reads input from the observer terminal and writes it to the PTY input pipe
+        public async void ObserverInput()
+        {
+            const int bufferLength = 4096;
+            var byteBuffer = new byte[bufferLength];
+            int bytesRead;
+            observerInput = new NamedPipeServerStream(observerInputPipeName, PipeDirection.In);
+
+            await observerInput.WaitForConnectionAsync();
+            while ((bytesRead = await observerInput.ReadAsync(byteBuffer, 0, bufferLength)) > 0)
+            {
+                if (!observerInteractive) continue;
+                var outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
+                CopyInputToPipe(outputChunk, true);
+            }
         }
         
         public void FocusObserver(bool isInteractive)
@@ -259,6 +318,8 @@ namespace PowershellExpectDriver
         
         public void DestroyObserver() {
             readPaused = true;
+            
+            ResizePTY(initiaPtyWidth, initiaPtyHeight);
             
             observerMutex?.Dispose();
             observerMutex = null;

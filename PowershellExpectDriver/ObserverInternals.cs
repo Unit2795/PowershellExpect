@@ -8,10 +8,12 @@ namespace PowershellExpectDriver
     {
         private string observerOutputPipeName;
         private string observerInputPipeName;
+        private string observerResizePipeName;
         private string observerMutexName;
         private Mutex observerMutex;
         private NamedPipeClientStream? outputPipeClient;
         private NamedPipeClientStream? inputPipeClient;
+        private NamedPipeClientStream? resizePipeClient;
         private CancellationTokenSource cancellationTokenSource;
         private long lastAdjustment;
         private int observerWidth;
@@ -28,21 +30,29 @@ namespace PowershellExpectDriver
         private const string ALT_CTRL = "1;7";
         private const string SHIFT_ALT_CTRL = "1;8";
         
-        public ObserverInternals(string outputPipeName, string inputPipeName, string mutexName, int width, int height)
+        public ObserverInternals(string outputPipeName, string inputPipeName, string resizePipeName,string mutexName)
         {
             observerOutputPipeName = outputPipeName;
             observerInputPipeName = inputPipeName;
+            observerResizePipeName = resizePipeName;
+            inputPipeClient = new NamedPipeClientStream(".", observerInputPipeName, PipeDirection.Out);
+            outputPipeClient  = new NamedPipeClientStream(".", observerOutputPipeName, PipeDirection.In);
+            resizePipeClient = new NamedPipeClientStream(".", observerResizePipeName, PipeDirection.Out);
             observerMutexName = mutexName;
-            observerWidth = width;
-            observerHeight = height;
             
             // Open the existing named Mutex
             observerMutex = Mutex.OpenExisting(observerMutexName);
+            
+            resizePipeClient.Connect();
+            observerWidth = Console.WindowWidth;
+            observerHeight = Console.WindowHeight;
+            ResizeObserver();
             
             cancellationTokenSource = new CancellationTokenSource();
             
             Task.Run(() => PrintOutputToObserver(cancellationTokenSource.Token));
             Task.Run(() => InputInterceptor(cancellationTokenSource.Token));
+            Task.Run(() => MonitorResize(cancellationTokenSource.Token));
             
             observerMutex.WaitOne();
             
@@ -103,7 +113,6 @@ namespace PowershellExpectDriver
         // Intercepts input from the observer terminal and sends it to the PTY
         private void InputInterceptor(CancellationToken cancellationToken)
         {
-            inputPipeClient = new NamedPipeClientStream(".", observerInputPipeName, PipeDirection.Out);
             try
             {
                 inputPipeClient.Connect();
@@ -146,7 +155,6 @@ namespace PowershellExpectDriver
         // Receives output sent from the PTY and writes it to the observer terminal
         private async Task PrintOutputToObserver(CancellationToken cancellationToken)
         {
-            outputPipeClient  = new NamedPipeClientStream(".", observerOutputPipeName, PipeDirection.In);
             try
             {
                 await outputPipeClient.ConnectAsync();
@@ -158,24 +166,6 @@ namespace PowershellExpectDriver
                 {
                     if (!outputPipeClient.IsConnected)
                         break;
-                    
-                    /*
-                        Adjust the buffer size and window size (if necessary, due to user resize) at max every 500ms to keep in sync with the PTY, to avoid the output being mangled.
-                        NOTE: If this proves to be too inefficient, may need to investigate subclassing the terminal/receiving resize events, increase the interval, or try something else.
-                    */
-                    if ((DateTimeOffset.Now.ToUnixTimeMilliseconds() - lastAdjustment) > 500)
-                    {
-                        lastAdjustment = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                        if (Console.WindowHeight != observerHeight || Console.WindowWidth != observerWidth)
-                        {
-                            Console.SetWindowSize(observerWidth, observerHeight);
-                            // The buffer size matches the window size on Linux/MacOS
-                            if (OperatingSystem.IsWindows()) 
-                            {
-                                Console.SetBufferSize(observerWidth, observerHeight);
-                            }
-                        }
-                    }
                     
                     bytesRead = await outputPipeClient.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                     if (bytesRead > 0)
@@ -189,6 +179,31 @@ namespace PowershellExpectDriver
                 // Pipe closed, silently exit the method
                 return;
             }
+        }
+        
+        private void MonitorResize(CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                /*
+                    Adjust the PTY buffer size (if necessary, due to user resize) at max every 100ms to keep in sync with the PTY, to avoid the output being mangled.
+                    NOTE: If this proves to be too inefficient, may need to investigate subclassing the terminal/receiving resize events, increase the interval, or try something else.
+                */
+                if (Console.WindowHeight != observerHeight || Console.WindowWidth != observerWidth)
+                {
+                    observerWidth = Console.WindowWidth;
+                    observerHeight = Console.WindowHeight;
+                    ResizeObserver();
+                }
+                
+                Thread.Sleep(250);
+            }
+        }
+        
+        private void ResizeObserver()
+        {
+            var resizeMessage = Encoding.UTF8.GetBytes(observerWidth + "x" + observerHeight);
+            resizePipeClient.Write(resizeMessage, 0, resizeMessage.Length);
         }
         
         private void DetachPipes()

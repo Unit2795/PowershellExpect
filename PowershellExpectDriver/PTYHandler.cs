@@ -28,6 +28,13 @@ namespace PowershellExpectDriver
             
             return new PTYHandler(hPC);
         }
+        
+        public void Resize(int width, int height)
+        {
+            var resizeResult = ResizePseudoConsole(Handle, new COORD { X = (short)width, Y = (short)height });
+            if(resizeResult != 0)
+                throw new InvalidOperationException("Could not resize pseudo console. Error Code " + resizeResult);
+        }
 
         public void Dispose() => ClosePseudoConsole(Handle);
     }
