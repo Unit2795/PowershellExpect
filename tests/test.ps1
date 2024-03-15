@@ -13,7 +13,7 @@ Remove-Module -Name "PowershellExpect"
 $module = Join-Path $PSScriptRoot "../PowershellExpect/PowershellExpect.psm1"
 Import-Module $module
 
-$process1 = Spawn -Command "pwsh.exe" -Timeout 5 -EnableLogging
+<#$process1 = Spawn -Command "pwsh.exe" -Timeout 5 -EnableLogging
     ShowTerminal -Interactive
     Send "node -v"
     Expect "v20"
@@ -21,26 +21,23 @@ $process1 = Spawn -Command "pwsh.exe" -Timeout 5 -EnableLogging
     Expect "10.*"
     ShowTerminal
     Send "pnpm -v"
-    Expect "8\..*"
+    Expect "8\..*"#>
 
 $process2 = Spawn -Timeout 20 -EnableLogging
-    ShowTerminal -Interactive
-    sleep 5
     Send '$host.UI.RawUI.WindowSize'
-    sleep 5
-    Send '$host.UI.RawUI.WindowSize'
-    sleep 5
+    Send '$host.UI.RawUI.BufferSize'
     Send "cd C:\Users\david\OneDrive\Desktop\testdir"
     Send "Remove-Item -Path 'C:\Users\david\OneDrive\Desktop\testdir\*' -Recurse -Force"
     Send "pnpm create tauri-app"
     Expect "Project name"
     Send "."
     Expect "Package"
-    Send "hello-world"
+ShowTerminal -Interactive -NoNewWindow
     Expect "Choose which language"
+    HideTerminal
     Send "`e[A"
 
-Despawn $process1
+#Despawn $process1
 
 Spawn $process2 -EnableLogging -Timeout 5
     Expect "Choose your UI"

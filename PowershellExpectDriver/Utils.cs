@@ -20,6 +20,23 @@ namespace PowershellExpectDriver
                 Flush();
         }
         
+        public void Append(string incomingData)
+        {
+            // Convert incoming string to bytes
+            var bytes = System.Text.Encoding.UTF8.GetBytes(incomingData);
+    
+            // Call the primary Append method with byte array
+            // Note: new ReadOnlyMemory<byte>(bytes) wraps byte array in a ReadOnlyMemory structure
+            Append(new ReadOnlyMemory<byte>(bytes));
+        }
+
+        public string ReadLines(int bottomLines = 9000)
+        {
+            // Read last N lines from the file
+            var lines = File.ReadLines(this.Path).TakeLast(bottomLines);
+            return string.Join(Environment.NewLine, lines);
+        }
+        
         public void Flush()
         {
             using var fileStream = new FileStream(Path, FileMode.Open, FileAccess.Write);

@@ -16,6 +16,8 @@ namespace PowershellExpectDriver
         // Store the last output read timestamp for detecting idle duration.
         private long lastRead = 0;
         private bool hasObserver = false;
+        private bool observerInNewWindow = false;
+        private MultiTextWriter multiTextWriter = new();
         
         public PTY Spawn(string workingDirectory, int timeout, bool enableLogging, int width, int height, string command = "pwsh")
         {
@@ -144,9 +146,14 @@ namespace PowershellExpectDriver
 
         public void ShowTerminal(bool isInteractive, bool noNewWindow)
         {
+            observerInNewWindow = !noNewWindow;
+            if (noNewWindow)
+            {
+                multiTextWriter.SetWriteToConsole(false);
+            }
             if (!hasObserver)
             {
-                pty.CreateObserver(isInteractive);
+                pty.CreateObserver(isInteractive, noNewWindow);
                 hasObserver = true;
             } else {
                 pty.FocusObserver(isInteractive);
@@ -161,6 +168,10 @@ namespace PowershellExpectDriver
             }
             
             hasObserver = false;
+            
+            if (!observerInNewWindow) return;
+            Console.Clear();
+            multiTextWriter.SetWriteToConsole(true);
         }
 
         public ProcessMetadata? SpawnInfo() => pty.Monitor?.Metadata;
@@ -188,8 +199,10 @@ namespace PowershellExpectDriver
         // Log a message to keep the user appraised of progress
         private void InfoMessage(string message)
         {
-            if (loggingEnabled)
-                Console.WriteLine("[PowershellExpect] " + message);
+            if (!loggingEnabled) return;
+            
+            var msg = $"[PowershellExpect] {message}";
+            multiTextWriter.Write(msg);
         }
     }
 }

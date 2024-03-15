@@ -168,7 +168,7 @@ namespace PowershellExpectDriver
         
         private static string GenerateSessionId() => $"PE-{Guid.NewGuid()}-{RandomNumberGenerator.GetInt32(100000)}";
 
-        public void CreateObserver(bool isInteractive)
+        public void CreateObserver(bool isInteractive,  bool noNewWindow)
         {
             readPaused = true;
             
@@ -180,7 +180,7 @@ namespace PowershellExpectDriver
                 {
                     FileName = "pwsh.exe",
                     Arguments = $"-NoExit -ExecutionPolicy Bypass -Command {GetObserverScript()}",
-                    UseShellExecute = true,
+                    UseShellExecute = !noNewWindow,
                     WindowStyle = ProcessWindowStyle.Normal,
                     CreateNoWindow = false
                 }
@@ -242,7 +242,6 @@ namespace PowershellExpectDriver
         private void ResizeTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {
             if (!resizeTriggered) return;
-            Console.WriteLine($"Resizing observer terminal to {ptyWidth}x{ptyHeight}");
             ResizePTY(ptyWidth, ptyHeight);
             resizeTriggered = false;
         }
