@@ -248,9 +248,11 @@ namespace PowershellExpectDriver
         
         private void ResizePTY(int newWidth, int newHeight)
         {
+            Console.WriteLine($"Resizing observer terminal to {newWidth}x{newHeight}");
             readPaused = true;
             observerInteractive = false;
-            ptyProcess?.Resize(newWidth, newHeight);
+            CopyInputToPipe($"\u001b[8;{newHeight};{newWidth}t", true);
+            //ptyProcess?.Resize(newWidth, newHeight);
             readPaused = false;
             observerInteractive = true;
         }

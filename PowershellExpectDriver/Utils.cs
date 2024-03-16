@@ -54,15 +54,15 @@ namespace PowershellExpectDriver
     
     public class Logger
     {
-        private readonly string tempFilePath = Path.GetTempFileName();
+        public readonly string FilePath = Path.GetTempFileName();
 
         public void Log(string message)
         {
-            using var writer = File.AppendText(tempFilePath);
+            using var writer = File.AppendText(FilePath);
             writer.Write(message);
         }
 
-        public void Cleanup() => File.Delete(tempFilePath);
+        public void Cleanup() => File.Delete(FilePath);
     }
     
     public class CircularBuffer

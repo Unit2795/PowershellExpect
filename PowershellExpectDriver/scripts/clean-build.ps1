@@ -35,7 +35,7 @@ function Info-Message {
     $boldVT = "`e[1m"
     $resetVT = "`e[0m"
     
-    Write-Host "`n$boldVT$colorVT[INFO] $message [INFO]$resetVT`n"
+    Write-Host "`n$boldVT$colorVT[INFO] $message$resetVT`n"
 }
 
 Info-Message "Beginning cleaning and build process" Yellow
