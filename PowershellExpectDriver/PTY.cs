@@ -40,8 +40,8 @@ namespace PowershellExpectDriver
         private string observerResizePipeName;
         private string observerMutexName;
         private Mutex? observerMutex;
-        private int initiaPtyWidth;
-        private int initiaPtyHeight;
+        private int initialPtyWidth;
+        private int initialPtyHeight;
         private int ptyWidth;
         private int ptyHeight;
         private System.Timers.Timer resizeTimer;
@@ -67,8 +67,8 @@ namespace PowershellExpectDriver
             ptyProcess = PTYHandler.Create(inputPipe.ReadSide, outputPipe.WriteSide, width, height);
             pwshProcess = ProcessFactory.Start(PTYHandler.PseudoConsoleThreadAttribute, ptyProcess.Handle, command, workingDirectory);
             Monitor = new ProcessMonitor(pwshProcess.ProcessInfo.dwProcessId);
-            initiaPtyWidth = width;
-            initiaPtyHeight = height;
+            initialPtyWidth = width;
+            initialPtyHeight = height;
             ptyWidth = width;
             ptyHeight = height;
             
@@ -110,7 +110,6 @@ namespace PowershellExpectDriver
             int bytesRead;
 
             var pseudoConsoleOutput = new FileStream(outputReadSide, FileAccess.Read);
-            
             while ((bytesRead = await pseudoConsoleOutput.ReadAsync(byteBuffer.AsMemory(0, bufferLength))) > 0)
             {
                 while (readPaused)
@@ -226,8 +225,6 @@ namespace PowershellExpectDriver
 
             Clear-Host
 
-            Get-Content -Path '{terminalBuffer.Path}'
-
             $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerResizePipeName}', '{observerMutexName}')
         ";
         
@@ -251,8 +248,7 @@ namespace PowershellExpectDriver
             Console.WriteLine($"Resizing observer terminal to {newWidth}x{newHeight}");
             readPaused = true;
             observerInteractive = false;
-            CopyInputToPipe($"\u001b[8;{newHeight};{newWidth}t", true);
-            //ptyProcess?.Resize(newWidth, newHeight);
+            ptyProcess?.Resize(newWidth, newHeight);
             readPaused = false;
             observerInteractive = true;
         }
@@ -320,7 +316,7 @@ namespace PowershellExpectDriver
         public void DestroyObserver() {
             readPaused = true;
             
-            ResizePTY(initiaPtyWidth, initiaPtyHeight);
+            ResizePTY(initialPtyWidth, initialPtyHeight);
             
             observerMutex?.Dispose();
             observerMutex = null;
@@ -328,6 +324,8 @@ namespace PowershellExpectDriver
             observerOutput = null;
             observerInput?.Dispose();
             observerInput = null;
+            observerResize?.Dispose();
+            observerResize = null;
             observerProcess?.Kill();
             observerProcess = null;
             
