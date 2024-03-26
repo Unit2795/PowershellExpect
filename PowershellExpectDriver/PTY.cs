@@ -101,7 +101,7 @@ namespace PowershellExpectDriver
             if (noNewline)
                 writer.Write(command);
             else
-                writer.WriteLine(command);
+                writer.Write(command + "\r");
 
             writer.Flush();
         }
