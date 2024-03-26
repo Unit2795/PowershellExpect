@@ -30,42 +30,47 @@ namespace PowershellExpectDriver
             Append(new ReadOnlyMemory<byte>(bytes));
         }
 
-        // Memory efficient method to read the last n lines of a file
+        // Read the last n lines of a file
         public string ReadLastLines(int lineCount = 9001)
         {
+            // Read the file in chunks of 4KB, larger buffer reduces the number of reads
+            const int bufferSize = 4096;
+            var buffer = new byte[bufferSize];
             var lineEndingsEncountered = 0;
-            var buffer = new byte[1];
-            StringBuilder stringBuilder = new StringBuilder();
+            var sb = new StringBuilder();
 
-            using (var fileStream = new FileStream(this.Path, FileMode.Open, FileAccess.Read))
+            using var fileStream = new FileStream(this.Path, FileMode.Open, FileAccess.Read);
+            // Start reading from the end of the file
+            var position = fileStream.Length;
+
+            // Loop until the desired number of lines has been read or the entire file has been read
+            while (position > 0)
             {
-                // Start from the end of the file.
-                var position = fileStream.Length;
+                // Calculate the number of bytes to read
+                var bytesToRead = (int)Math.Min(bufferSize, position);
+                // Move the position back by the number of bytes we will read
+                position -= bytesToRead;
+                fileStream.Seek(position, SeekOrigin.Begin);
+                fileStream.Read(buffer, 0, bytesToRead);
 
-                while (position > 0)
+                var content = Encoding.UTF8.GetString(buffer, 0, bytesToRead);
+                var lines = content.Split('\n');
+                
+                for (var i = lines.Length - 1; i >= 0; i--)
                 {
-                    fileStream.Seek(--position, SeekOrigin.Begin);
-                    fileStream.Read(buffer, 0, 1);
-
-                    // '\n' is the newline character
-                    if (buffer[0] != '\n') continue;
-                    
+                    sb.Insert(0, lines[i]);
                     lineEndingsEncountered++;
 
-                    if (lineEndingsEncountered == lineCount)
+                    if (lineEndingsEncountered == lineCount || i > 0)
                     {
-                        // Found the start of the (lineCount)th line.
-                        break;
+                        sb.Insert(0, '\n');
+                        if (lineEndingsEncountered == lineCount)
+                            return sb.ToString();
                     }
                 }
-
-                // Read from the current position to the end of the file.
-                var remainingBytes = new byte[fileStream.Length - position];
-                fileStream.Read(remainingBytes, 0, remainingBytes.Length);
-                stringBuilder.Append(Encoding.UTF8.GetString(remainingBytes));
             }
 
-            return stringBuilder.ToString();
+            return sb.ToString();
         }
         
         public void Flush()
