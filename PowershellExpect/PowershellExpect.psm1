@@ -43,18 +43,18 @@ function Spawn {
         }
     }
     
-    if ($X -eq 0)
-    {
-        $X = if ($IsWindows) { 120 } else { 80 }
-    }
-    if ($Y -eq 0)
-    {
-        $Y = if ($IsWindows) { 30 } else { 24 }
-    }
-    
     if ($null -ne $Process) {
         $script:activeProcess = $Process
     } else {
+        if ($X -eq 0)
+        {
+            $X = if ($IsWindows) { 120 } else { 80 }
+        }
+        if ($Y -eq 0)
+        {
+            $Y = if ($IsWindows) { 30 } else { 24 }
+        }
+        
         # Initialize a new instance of the C# driver object
         $pty = New-Object PowershellExpectDriver.Driver
 

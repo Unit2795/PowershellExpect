@@ -30,11 +30,42 @@ namespace PowershellExpectDriver
             Append(new ReadOnlyMemory<byte>(bytes));
         }
 
-        public string ReadLines(int bottomLines = 9000)
+        // Memory efficient method to read the last n lines of a file
+        public string ReadLastLines(int lineCount = 9001)
         {
-            // Read last N lines from the file
-            var lines = File.ReadLines(this.Path).TakeLast(bottomLines);
-            return string.Join(Environment.NewLine, lines);
+            var lineEndingsEncountered = 0;
+            var buffer = new byte[1];
+            StringBuilder stringBuilder = new StringBuilder();
+
+            using (var fileStream = new FileStream(this.Path, FileMode.Open, FileAccess.Read))
+            {
+                // Start from the end of the file.
+                var position = fileStream.Length;
+
+                while (position > 0)
+                {
+                    fileStream.Seek(--position, SeekOrigin.Begin);
+                    fileStream.Read(buffer, 0, 1);
+
+                    // '\n' is the newline character
+                    if (buffer[0] != '\n') continue;
+                    
+                    lineEndingsEncountered++;
+
+                    if (lineEndingsEncountered == lineCount)
+                    {
+                        // Found the start of the (lineCount)th line.
+                        break;
+                    }
+                }
+
+                // Read from the current position to the end of the file.
+                var remainingBytes = new byte[fileStream.Length - position];
+                fileStream.Read(remainingBytes, 0, remainingBytes.Length);
+                stringBuilder.Append(Encoding.UTF8.GetString(remainingBytes));
+            }
+
+            return stringBuilder.ToString();
         }
         
         public void Flush()

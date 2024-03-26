@@ -46,6 +46,7 @@ namespace PowershellExpectDriver
         private int ptyHeight;
         private System.Timers.Timer resizeTimer;
         private bool resizeTriggered;
+        private Logger logger = new();
         
         public PTY()
         {
@@ -53,6 +54,9 @@ namespace PowershellExpectDriver
             observerInputPipeName = $"{sessionId}ObserverInput";
             observerResizePipeName = $"{sessionId}ObserverResize";
             observerMutexName = $"{sessionId}ObserverMutex";
+
+            // TODO: Remove logger before release
+            Console.WriteLine(logger.FilePath);
 
             dllDirectory = Path.GetDirectoryName(dllPath);
             // TODO: Use this to load observer script or remove it
@@ -121,6 +125,9 @@ namespace PowershellExpectDriver
                     await observerOutput.WriteAsync(byteBuffer.AsMemory(0, bytesRead));
                 
                 string outputChunk = Encoding.UTF8.GetString(byteBuffer, 0, bytesRead);
+                
+                // TODO: Remove logger before release
+                logger.Log(outputChunk);
                 OnOutputReceived(outputChunk);
             }
         }
@@ -201,13 +208,14 @@ namespace PowershellExpectDriver
                 return false;
             }, IntPtr.Zero);
             
-            observerResize = new NamedPipeServerStream(observerResizePipeName, PipeDirection.In );
-            observerResize.WaitForConnection();
-            Task.Run(ObserverResize);
-            
             // Create a named pipe server to send PTY output to the observer terminal
             observerOutput = new NamedPipeServerStream(observerOutputPipeName, PipeDirection.Out, 1 , PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             observerOutput.WaitForConnection();
+            observerOutput.Write(Encoding.UTF8.GetBytes(terminalBuffer.ReadLastLines()));
+            
+            observerResize = new NamedPipeServerStream(observerResizePipeName, PipeDirection.In );
+            observerResize.WaitForConnection();
+            Task.Run(ObserverResize);
 
             if (isInteractive)
             {
@@ -223,7 +231,6 @@ namespace PowershellExpectDriver
 
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-            Clear-Host
 
             $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerResizePipeName}', '{observerMutexName}')
         ";
@@ -234,7 +241,6 @@ namespace PowershellExpectDriver
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
         }
-        
 
         private void ResizeTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
         {

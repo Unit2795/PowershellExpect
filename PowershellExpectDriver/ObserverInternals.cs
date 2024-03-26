@@ -43,11 +43,6 @@ namespace PowershellExpectDriver
             // Open the existing named Mutex
             observerMutex = Mutex.OpenExisting(observerMutexName);
             
-            resizePipeClient.Connect();
-            observerWidth = Console.WindowWidth;
-            observerHeight = Console.WindowHeight;
-            ResizeObserver();
-            
             cancellationTokenSource = new CancellationTokenSource();
             
             Task.Run(() => PrintOutputToObserver(cancellationTokenSource.Token));
@@ -183,6 +178,8 @@ namespace PowershellExpectDriver
         
         private void MonitorResize(CancellationToken cancellationToken)
         {
+            resizePipeClient?.Connect();
+            
             while (true)
             {
                 /*

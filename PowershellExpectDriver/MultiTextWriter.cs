@@ -21,7 +21,7 @@ namespace PowershellExpectDriver
             if (!shouldWrite) return;
             
             terminalBuffer.Flush();
-            originalOut.Write(terminalBuffer.ReadLines());
+            originalOut.Write(terminalBuffer.ReadLastLines());
         }
 
         public override Encoding Encoding => originalOut.Encoding;
