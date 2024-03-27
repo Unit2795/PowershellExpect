@@ -90,7 +90,7 @@ namespace PowershellExpectDriver
                 // Ensure all async operations are complete before disposing resources.
                 waitHandle.SetResult(true);
                 waitHandle.Task.ContinueWith((_) => DisposeResources());
-            }).Start(); 
+            }).Start();
         }
         
         // Sends input to the PTY input pipe
@@ -98,10 +98,8 @@ namespace PowershellExpectDriver
         {
             var writer = new StreamWriter(new FileStream(inputPipe!.WriteSide, FileAccess.Write));
             
-            if (noNewline)
-                writer.Write(command);
-            else
-                writer.Write(command + "\r");
+            var eol = noNewline ? "" : "\r";
+            writer.Write(command + eol);
 
             writer.Flush();
         }
@@ -230,7 +228,6 @@ namespace PowershellExpectDriver
             Import-Module '{dllPath}'
 
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
 
             $observer = New-Object PowershellExpectDriver.ObserverInternals('{observerOutputPipeName}', '{observerInputPipeName}', '{observerResizePipeName}', '{observerMutexName}')
         ";
