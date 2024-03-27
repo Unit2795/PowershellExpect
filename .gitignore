@@ -1,1 +1,5 @@
 .idea
+*.DotSettings.user
+PowershellExpectDriver/bin
+PowershellExpectDriver/obj
+PowershellExpect/PowershellExpectDriver.dll

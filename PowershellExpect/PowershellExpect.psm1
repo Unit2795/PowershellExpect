@@ -1,85 +1,156 @@
-Add-Type -Path  "$PSScriptRoot/PowershellExpect.cs"
+# Import primary driver DLL
+$driverDLLPath = Join-Path $PSScriptRoot "/PowershellExpectDriver.dll"
+Add-Type -Path $driverDLLPath
 
-<# 
-#   Spawn a child PowerShell process to execute commands in.
-#   Returns an object containing the functions you may execute against the spawned PowerShell process.
-#>
+# Import helper functions
+$helpersPath = Join-Path $PSScriptRoot "Helpers.ps1"
+. $helpersPath
+
+$script:activeProcess = $null
+
 function Spawn {
+    [CmdletBinding(DefaultParameterSetName = 'Default')]
     param(
-        # Timeout in seconds
-        [int]$Timeout = $null,
-        [switch]$EnableLogging = $false
+        [Parameter(Position = 0)]
+        $Process = $null,
+        
+        [Parameter(ParameterSetName = 'Command')]
+        [string]$Command = $null,
+        
+        [string]$WorkDir = $PWD,
+        [int]$Timeout = 0,
+        [switch]$EnableLogging = $false,
+        [int]$X = 0,
+        [int]$Y = 0
     )
-    try
-    {
+
+    # Check if pwsh (v7) or powershell (v5) can be ran if no command is provided
+    if ("" -eq $Command) {
+        $commands = @('pwsh', 'powershell')
+        $isRunnable = $false
+
+        foreach ($cmd in $commands) {
+            $isRunnable = Test-ProgramExists -programName $cmd
+            if ($isRunnable) {
+                $Command = $cmd
+                break
+            }
+        }
+
+        if (-not $isRunnable) {
+            Write-Error "PowershellExpect requires either pwsh (v7) or powershell (v5) to be installed and in the PATH if you do not provide a command to spawn."
+            exit
+        }
+    }
+    
+    if ($null -ne $Process) {
+        $script:activeProcess = $Process
+    } else {
+        if ($X -eq 0)
+        {
+            $X = if ($IsWindows) { 120 } else { 80 }
+        }
+        if ($Y -eq 0)
+        {
+            $Y = if ($IsWindows) { 30 } else { 24 }
+        }
+        
         # Initialize a new instance of the C# driver object
-        $processHandler = New-Object PowershellExpectHandler
-        
-        # Start the process
-        $process = $processHandler.StartProcess($PWD, $Timeout, $EnableLogging)
+        $pty = New-Object PowershellExpectDriver.Driver
 
-        # Store the ProcessHandler instance in the process object to ensure that the spawned process is persisted
-        $process | Add-Member -MemberType NoteProperty -Name "ProcessHandler" -Value $processHandler
-        
-        # START COMMANDS
-        # Attach all of the commands to the process object
-        $process | Add-Member -MemberType ScriptMethod -Name "Send" -Value {
-            param(
-                [string]$CommandToSend,
-                [switch]$NoNewline = $false
-            )
-            # Use stored HandlerInstance to send the command
-            $this.ProcessHandler.Send($CommandToSend, $NoNewline)
-        }
-        $process | Add-Member -MemberType ScriptMethod -Name "SendAndWait" -Value {
-            param(
-                [string]$Command,
-                [int]$IgnoreLines = 0,
-                [int]$WaitForIdle = 3,
-                [switch]$NoNewline = $false
-            )
-            try
-            {
-                $this.ProcessHandler.SendAndWait($Command, $IgnoreLines, $WaitForIdle, $NoNewline)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        $process | Add-Member -MemberType ScriptMethod -Name "Expect" -Value {
-            param(
-                [string]$Regex,
-                [int]$Timeout = $null,
-                [switch]$ContinueOnTimeout
-            )
-            try
-            {
-                return $this.ProcessHandler.Expect($Regex, $Timeout, $ContinueOnTimeout)
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        $process | Add-Member -MemberType ScriptMethod -Name "Exit" -Value {
-            try
-            {
-                return $this.ProcessHandler.Exit()
-            } catch {
-                Write-Warning "PowershellExpect encountered an error!"
-                Write-Error $_
-                throw
-            }
-        }
-        # END COMMANDS
+        $pty.Spawn($WorkDir, $Timeout, $EnableLogging, $X, $Y, $Command) | Out-Null
 
-        return $process
+        $script:activeProcess = $pty
+    }
+    
+    if (Test-OutputCaptured) {
+        return $script:activeProcess
+    }
+}
+
+function Send {
+    param(
+        [string]$Command,
+        [switch]$NoNewline = $false,
+        [int]$IdleDuration = 0,
+        [int]$IgnoreLines = 0
+    )
+
+    try {
+        $result = $script:activeProcess.Send($Command, $NoNewline, $IdleDuration, $IgnoreLines)
+        
+        if ($null -ne $result) {
+            $isCaptured = Test-OutputCaptured
+            
+            if ($isCaptured) {
+                return $result
+            }
+        }
     } catch {
         Write-Warning "PowershellExpect encountered an error!"
         Write-Error $_
         throw
+        exit
     }
 }
 
-Export-ModuleMember -Function Spawn
+function Expect {
+    param(
+        [string]$Regex,
+        [int]$Timeout = 0,
+        [switch]$ContinueOnTimeout = $false,
+        [switch]$EOF = $false
+    )
+
+    try
+    {
+        $result = $script:activeProcess.Expect($Regex, $Timeout, $ContinueOnTimeout, $EOF)
+        
+        if ($null -ne $result) {
+            $isCaptured = Test-OutputCaptured
+
+            if ($isCaptured) {
+                return $result
+            }
+        }
+    } catch {
+        Write-Warning "PowershellExpect encountered an error!"
+        Write-Error $_
+        throw
+        exit
+    }
+}
+
+function ShowTerminal {
+    param(
+        [switch]$Interactive = $false,
+        [switch]$NoNewWindow = $false
+    )
+    $script:activeProcess.ShowTerminal($Interactive, $NoNewWindow)
+}
+
+function HideTerminal {
+    $script:activeProcess.HideTerminal()
+}
+
+function GetSpawn {
+    return $script:activeProcess
+}
+
+function SpawnInfo {
+    $script:activeProcess.SpawnInfo()
+}
+
+function Despawn {
+    param(
+        $Process
+    )
+    
+    if ($null -eq $Process) {
+        $script:activeProcess.Exit()
+    } else {
+        $Process.Exit()
+    }
+}
+
+Export-ModuleMember -Function Spawn, Send, Expect, ShowTerminal, HideTerminal, SpawnInfo, GetSpawn, Despawn
